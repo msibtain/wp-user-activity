@@ -1,0 +1,272 @@
+/* WP User Activity Logger Admin Styles */
+
+.wpual-stats {
+    display: flex;
+    gap: 20px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.stat-box {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    min-width: 150px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.stat-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 24px;
+    color: #0073aa;
+    font-weight: 600;
+}
+
+.stat-box p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.wpual-filters {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.filter-row {
+    display: flex;
+    gap: 15px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+}
+
+.filter-group label {
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #23282d;
+}
+
+.filter-group select,
+.filter-group input {
+    padding: 5px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.filter-actions {
+    display: flex;
+    gap: 10px;
+    align-items: end;
+}
+
+.wpual-actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+}
+
+.activity-type {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.activity-login {
+    background: #d4edda;
+    color: #155724;
+}
+
+.activity-logout {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.activity-page_view {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.activity-category_view {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.activity-archive_view, .activity-video_view {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+.column-user img {
+    vertical-align: middle;
+    margin-right: 5px;
+    border-radius: 50%;
+}
+
+.column-url a {
+    word-break: break-all;
+    color: #0073aa;
+    text-decoration: none;
+}
+
+.column-url a:hover {
+    color: #005a87;
+    text-decoration: underline;
+}
+
+.column-details {
+    max-width: 300px;
+    word-wrap: break-word;
+}
+
+.column-ip {
+    font-family: monospace;
+    font-size: 12px;
+}
+
+/* Responsive design */
+@media (max-width: 782px) {
+    .wpual-stats {
+        flex-direction: column;
+    }
+    
+    .stat-box {
+        min-width: auto;
+    }
+    
+    .filter-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .filter-group {
+        min-width: auto;
+    }
+    
+    .filter-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .wpual-actions {
+        flex-direction: column;
+    }
+    
+    .column-details {
+        max-width: 200px;
+    }
+}
+
+/* Loading state */
+.wpual-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Success/Error messages */
+.wpual-notice {
+    padding: 10px 15px;
+    margin: 10px 0;
+    border-radius: 3px;
+    border-left: 4px solid;
+}
+
+.wpual-notice.success {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+.wpual-notice.error {
+    background: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+/* Table improvements */
+.wp-list-table .column-id {
+    width: 60px;
+}
+
+.wp-list-table .column-user {
+    width: 150px;
+}
+
+.wp-list-table .column-ip {
+    width: 120px;
+}
+
+.wp-list-table .column-activity {
+    width: 100px;
+}
+
+.wp-list-table .column-date {
+    width: 150px;
+}
+
+/* Hover effects */
+.wp-list-table tbody tr:hover {
+    background-color: #f9f9f9;
+}
+
+/* Checkbox improvements */
+.check-column input[type="checkbox"] {
+    margin: 0;
+}
+
+/* Pagination improvements */
+.pagination-links a,
+.pagination-links span {
+    padding: 5px 10px;
+    margin: 0 2px;
+    border: 1px solid #ddd;
+    text-decoration: none;
+    border-radius: 3px;
+}
+
+.pagination-links a:hover {
+    background: #f1f1f1;
+}
+
+.pagination-links .current {
+    background: #0073aa;
+    color: #fff;
+    border-color: #0073aa;
+}
+
+/* Tooltip for truncated URLs */
+.column-url a[title] {
+    position: relative;
+}
+
+.column-url a[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    background: #333;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    max-width: 300px;
+    word-wrap: break-word;
+} 
