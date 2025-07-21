@@ -220,6 +220,17 @@
     width: 150px;
 }
 
+.wp-list-table .column-duration {
+    width: 100px;
+    text-align: center;
+}
+
+.column-duration {
+    font-family: monospace;
+    font-size: 12px;
+    color: #666;
+}
+
 /* Hover effects */
 .wp-list-table tbody tr:hover {
     background-color: #f9f9f9;

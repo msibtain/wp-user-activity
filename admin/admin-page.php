@@ -26,6 +26,7 @@ if (isset($_POST['action']) && $_POST['action'] !== '-1' && isset($_POST['log_id
 // Get filter parameters
 $activity_type_filter = isset($_GET['activity_type']) ? sanitize_text_field($_GET['activity_type']) : '';
 $user_filter = isset($_GET['user_id']) ? intval($_GET['user_id']) : '';
+$user_role_filter = isset($_GET['user_role']) ? sanitize_text_field($_GET['user_role']) : '';
 $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
 $search = isset($_GET['search']) ? sanitize_text_field($_GET['search']) : '';
@@ -49,6 +50,19 @@ if (!empty($activity_type_filter)) {
 if (!empty($user_filter)) {
     $where_conditions[] = 'user_id = %d';
     $where_values[] = $user_filter;
+}
+
+if (!empty($user_role_filter)) {
+    // Get users with the specified role
+    $role_users = get_users(array('role' => $user_role_filter, 'fields' => 'ID'));
+    if (!empty($role_users)) {
+        $placeholders = implode(',', array_fill(0, count($role_users), '%d'));
+        $where_conditions[] = "user_id IN ($placeholders)";
+        $where_values = array_merge($where_values, $role_users);
+    } else {
+        // If no users found with this role, return no results
+        $where_conditions[] = '1 = 0';
+    }
 }
 
 if (!empty($date_from)) {
@@ -90,6 +104,10 @@ $activity_types = $wpdb->get_col("SELECT DISTINCT activity_type FROM $table_name
 
 // Get users for filter
 $users = $wpdb->get_results("SELECT DISTINCT user_id FROM $table_name WHERE user_id IS NOT NULL AND user_id > 0");
+
+// Get available user roles for filter
+$wp_roles = wp_roles();
+$available_roles = $wp_roles->get_names();
 
 $total_pages = ceil($total_logs / $per_page);
 ?>
@@ -142,6 +160,18 @@ $total_pages = ceil($total_logs / $per_page);
                                     <?php echo esc_html($user->display_name . ' (' . $user->user_email . ')'); ?>
                                 </option>
                             <?php endif; ?>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="user_role"><?php _e('User Role:', 'wp-user-activity-logger'); ?></label>
+                    <select name="user_role" id="user_role">
+                        <option value=""><?php _e('All Roles', 'wp-user-activity-logger'); ?></option>
+                        <?php foreach ($available_roles as $role_key => $role_name): ?>
+                            <option value="<?php echo esc_attr($role_key); ?>" <?php selected($user_role_filter, $role_key); ?>>
+                                <?php echo esc_html($role_name); ?>
+                            </option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -220,10 +250,10 @@ $total_pages = ceil($total_logs / $per_page);
                     </td>
                     <th scope="col" class="manage-column column-id"><?php _e('ID', 'wp-user-activity-logger'); ?></th>
                     <th scope="col" class="manage-column column-user"><?php _e('User', 'wp-user-activity-logger'); ?></th>
-                    <th scope="col" class="manage-column column-ip"><?php _e('IP Address', 'wp-user-activity-logger'); ?></th>
                     <th scope="col" class="manage-column column-activity"><?php _e('Activity', 'wp-user-activity-logger'); ?></th>
                     <th scope="col" class="manage-column column-details"><?php _e('Details', 'wp-user-activity-logger'); ?></th>
                     <th scope="col" class="manage-column column-url"><?php _e('Page URL', 'wp-user-activity-logger'); ?></th>
+                    <th scope="col" class="manage-column column-duration"><?php _e('Duration', 'wp-user-activity-logger'); ?></th>
                     <th scope="col" class="manage-column column-date"><?php _e('Date', 'wp-user-activity-logger'); ?></th>
                 </tr>
             </thead>
@@ -231,7 +261,7 @@ $total_pages = ceil($total_logs / $per_page);
             <tbody>
                 <?php if (empty($logs)): ?>
                     <tr>
-                        <td colspan="7"><?php _e('No activity logs found.', 'wp-user-activity-logger'); ?></td>
+                        <td colspan="8"><?php _e('No activity logs found.', 'wp-user-activity-logger'); ?></td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($logs as $log): ?>
@@ -257,7 +287,6 @@ $total_pages = ceil($total_logs / $per_page);
                                     <em><?php _e('Guest', 'wp-user-activity-logger'); ?></em>
                                 <?php endif; ?>
                             </td>
-                            <td class="column-ip"><?php echo esc_html($log->user_ip); ?></td>
                             <td class="column-activity">
                                 <span class="activity-type activity-<?php echo esc_attr($log->activity_type); ?>">
                                     <?php echo esc_html(ucfirst(str_replace('_', ' ', $log->activity_type))); ?>
@@ -270,6 +299,22 @@ $total_pages = ceil($total_logs / $per_page);
                                         <?php echo esc_html(wp_parse_url($log->page_url, PHP_URL_PATH) ?: $log->page_url); ?>
                                     </a>
                                 <?php endif; ?>
+                            </td>
+                            <td class="column-duration">
+                                <?php 
+                                if (isset($log->duration) && $log->duration > 0) {
+                                    $duration = intval($log->duration);
+                                    if ($duration < 60) {
+                                        echo esc_html($duration . 's');
+                                    } elseif ($duration < 3600) {
+                                        echo esc_html(floor($duration / 60) . 'm ' . ($duration % 60) . 's');
+                                    } else {
+                                        echo esc_html(floor($duration / 3600) . 'h ' . floor(($duration % 3600) / 60) . 'm');
+                                    }
+                                } else {
+                                    echo '<em>' . __('N/A', 'wp-user-activity-logger') . '</em>';
+                                }
+                                ?>
                             </td>
                             <td class="column-date">
                                 <?php echo esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($log->created_at))); ?>
@@ -312,7 +357,7 @@ jQuery(document).ready(function($) {
         var form = $('<form>', {
             'method': 'POST',
             'action': ajaxurl
-        }).append($('<input>', {
+        })).append($('<input>', {
             'type': 'hidden',
             'name': 'action',
             'value': 'wpual_export_logs'
@@ -320,6 +365,30 @@ jQuery(document).ready(function($) {
             'type': 'hidden',
             'name': 'nonce',
             'value': wpual_ajax.nonce
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'activity_type',
+            'value': $('#activity_type').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'user_id',
+            'value': $('#user_id').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'user_role',
+            'value': $('#user_role').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'date_from',
+            'value': $('#date_from').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'date_to',
+            'value': $('#date_to').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'search',
+            'value': $('#search').val()
         }));
         
         $('body').append(form);
@@ -344,4 +413,4 @@ jQuery(document).ready(function($) {
         }
     });
 });
-</script> 
+</script>

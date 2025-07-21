@@ -36,6 +36,10 @@ jQuery(document).ready(function($) {
             'value': $('#user_id').val()
         })).append($('<input>', {
             'type': 'hidden',
+            'name': 'user_role',
+            'value': $('#user_role').val()
+        })).append($('<input>', {
+            'type': 'hidden',
             'name': 'date_from',
             'value': $('#date_from').val()
         })).append($('<input>', {

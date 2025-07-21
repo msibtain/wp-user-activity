@@ -6,19 +6,21 @@ A comprehensive WordPress plugin that logs user activity across your website, in
 
 ### Activity Logging
 - **User Login/Logout Tracking**: Records when users log in and out of the system
-- **Page View Logging**: Tracks every page view on your website
+- **Page View Logging**: Tracks every page view on your website with time duration
 - **Category View Logging**: Monitors when users browse specific categories
 - **Archive View Logging**: Logs visits to date-based archives, author pages, and other archive types
+- **Time Duration Tracking**: Records how long users stay on each page
 - **Bot Detection**: Automatically filters out search engine bots and crawlers
 - **IP Address Tracking**: Records user IP addresses for security analysis
 - **User Agent Logging**: Stores browser and device information
 
 ### Admin Interface
 - **Comprehensive Dashboard**: View all activity logs in a clean, organized table
-- **Advanced Filtering**: Filter by activity type, user, date range, and search terms
+- **Advanced Filtering**: Filter by activity type, user, user role, date range, and search terms
 - **Pagination**: Navigate through large datasets efficiently
 - **Bulk Operations**: Select and delete multiple logs at once
 - **Export Functionality**: Export logs to CSV format for external analysis
+- **Duration Display**: View time spent on each page in a readable format
 - **Statistics Overview**: Quick stats on total logs, activity types, and active users
 - **Responsive Design**: Works perfectly on desktop and mobile devices
 
@@ -56,6 +58,7 @@ CREATE TABLE {prefix}_activity_log (
     activity_details text,
     page_url varchar(500),
     referer_url varchar(500),
+    duration int(11) DEFAULT 0,
     created_at datetime DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY user_id (user_id),
@@ -74,6 +77,7 @@ CREATE TABLE {prefix}_activity_log (
 ### Filtering Options
 - **Activity Type**: Filter by login, logout, page_view, category_view, or archive_view
 - **User**: Select a specific user to view their activity
+- **User Role**: Filter by user role (Administrator, Editor, Author, Contributor, Subscriber, etc.)
 - **Date Range**: Choose a specific date range for the logs
 - **Search**: Search through activity details, page URLs, or IP addresses
 
@@ -95,9 +99,34 @@ The plugin tracks the following activity types:
 |---------------|-------------|
 | `login` | User successfully logged in |
 | `logout` | User logged out |
-| `page_view` | User viewed a page or post |
+| `page_view` | User viewed a page or post (includes duration tracking) |
 | `category_view` | User browsed a category page |
 | `archive_view` | User viewed date, author, or tag archives |
+
+## Duration Tracking
+
+The plugin now includes advanced time duration tracking for page views:
+
+### How It Works
+- **Real-time Tracking**: JavaScript tracks when users enter and leave pages
+- **Multiple Triggers**: Duration is updated when users:
+  - Close the browser tab/window
+  - Navigate to another page
+  - Become inactive for 5 minutes
+  - Every 30 seconds while actively browsing
+- **Session Management**: Uses PHP sessions to link page views with their duration data
+- **AJAX Updates**: Duration data is sent to the server via AJAX calls
+
+### Duration Display
+- **Admin Interface**: Duration is displayed in a human-readable format (e.g., "2m 30s", "1h 15m")
+- **CSV Export**: Duration is included in exported data as seconds
+- **Filtering**: You can filter and analyze user engagement patterns
+
+### Technical Details
+- Duration is stored in seconds in the database
+- Only page views (not logins, logouts, etc.) include duration tracking
+- Duration updates are sent via AJAX to avoid blocking page navigation
+- The system handles edge cases like browser crashes or network issues
 
 ## Customization
 
@@ -170,9 +199,10 @@ define('WP_DEBUG_LOG', true);
 ### Version 1.0.0
 - Initial release
 - User login/logout tracking
-- Page view logging
+- Page view logging with time duration tracking
 - Category and archive view tracking
 - Admin interface with filtering and export
+- Duration display in admin dashboard
 - Bot detection and filtering
 - Responsive design
 
