@@ -16,10 +16,11 @@ A comprehensive WordPress plugin that logs user activity across your website, in
 
 ### Admin Interface
 - **Comprehensive Dashboard**: View all activity logs in a clean, organized table
+- **Active Users Page**: Dedicated page showing user activity statistics and engagement metrics
 - **Advanced Filtering**: Filter by activity type, user, user role, date range, and search terms
 - **Pagination**: Navigate through large datasets efficiently
 - **Bulk Operations**: Select and delete multiple logs at once
-- **Export Functionality**: Export logs to CSV format for external analysis
+- **Export Functionality**: Export logs and active users to CSV format for external analysis
 - **Duration Display**: View time spent on each page in a readable format
 - **Statistics Overview**: Quick stats on total logs, activity types, and active users
 - **Responsive Design**: Works perfectly on desktop and mobile devices
@@ -73,6 +74,19 @@ CREATE TABLE {prefix}_activity_log (
 1. After activation, you'll find a new "Activity Log" menu item in your WordPress admin
 2. Click on it to view the user activity dashboard
 3. Use the filters at the top to narrow down the results
+
+### Active Users Page
+1. Navigate to Activity Log > Active Users in your WordPress admin
+2. View comprehensive statistics about user engagement and activity patterns
+3. Filter users by role, activity period (7, 30, 60, or 90 days), and search terms
+4. See detailed metrics including:
+   - Total activities per user
+   - Number of active days
+   - Total time spent on the site
+   - Types of activities performed
+   - First and last activity timestamps
+5. Export active users data to CSV for further analysis
+6. Click "View Logs" to see detailed activity logs for specific users
 
 ### Filtering Options
 - **Activity Type**: Filter by login, logout, page_view, category_view, or archive_view

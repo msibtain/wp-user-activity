@@ -14,11 +14,28 @@ jQuery(document).ready(function($) {
         // Show loading state
         $button.text('Exporting...').prop('disabled', true);
         
+        // Debug: Log the export request
+        console.log('Exporting logs with filters:', {
+            activity_type: $('#activity_type').val(),
+            user_id: $('#user_id').val(),
+            user_role: $('#user_role').val(),
+            date_from: $('#date_from').val(),
+            date_to: $('#date_to').val(),
+            search: $('#search').val(),
+            ajax_url: wpual_ajax.ajax_url
+        });
+        
         // Create form and submit
         var form = $('<form>', {
             'method': 'POST',
-            'action': wpual_ajax.ajax_url
-        }).append($('<input>', {
+            'action': wpual_ajax.ajax_url,
+            'target': '_blank',
+            'style': 'display: none;',
+            'id': 'wpual-export-form'
+        });
+        
+        // Add form fields
+        form.append($('<input>', {
             'type': 'hidden',
             'name': 'action',
             'value': 'wpual_export_logs'
@@ -52,9 +69,17 @@ jQuery(document).ready(function($) {
             'value': $('#search').val()
         }));
         
+        // Remove any existing export form
+        $('#wpual-export-form').remove();
+        
+        // Append form to body and submit
         $('body').append(form);
-        form.submit();
-        form.remove();
+        form[0].submit();
+        
+        // Remove form after submission
+        setTimeout(function() {
+            form.remove();
+        }, 1000);
         
         // Reset button after a short delay
         setTimeout(function() {
@@ -93,6 +118,52 @@ jQuery(document).ready(function($) {
                 $('.wrap').removeClass('wpual-loading');
             });
         }
+    });
+    
+    // Export active users functionality
+    $('#export-active-users').on('click', function(e) {
+        e.preventDefault();
+        
+        var $button = $(this);
+        var originalText = $button.text();
+        
+        // Show loading state
+        $button.text('Exporting...').prop('disabled', true);
+        
+        // Create form and submit
+        var form = $('<form>', {
+            'method': 'POST',
+            'action': wpual_ajax.ajax_url
+        }).append($('<input>', {
+            'type': 'hidden',
+            'name': 'action',
+            'value': 'wpual_export_active_users'
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'nonce',
+            'value': wpual_ajax.nonce
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'user_role',
+            'value': $('#user_role').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'activity_period',
+            'value': $('#activity_period').val()
+        })).append($('<input>', {
+            'type': 'hidden',
+            'name': 'search',
+            'value': $('#search').val()
+        }));
+        
+        $('body').append(form);
+        form.submit();
+        form.remove();
+        
+        // Reset button after a short delay
+        setTimeout(function() {
+            $button.text(originalText).prop('disabled', false);
+        }, 2000);
     });
     
     // Bulk actions functionality
@@ -264,9 +335,9 @@ jQuery(document).ready(function($) {
     });
     
     // Initialize tooltips
-    $('[title]').tooltip({
-        position: { my: 'left+5 center', at: 'right center' }
-    });
+    // $('[title]').tooltip({
+    //     position: { my: 'left+5 center', at: 'right center' }
+    // });
     
     // Table row highlighting
     $('.wp-list-table tbody tr').on('click', function(e) {
@@ -294,4 +365,150 @@ jQuery(document).ready(function($) {
     $(window).on('beforeunload', function() {
         sessionStorage.removeItem('wpual_export_filters');
     });
+    
+    // User search functionality
+    var userSearchTimeout;
+    var userSearchResults = [];
+    
+    $('#user_search').on('keyup', function() {
+        console.log('User search keyup');
+        var searchTerm = $(this).val().trim();
+        var $results = $('#user_search_results');
+        var $container = $('.user-search-container');
+        
+        clearTimeout(userSearchTimeout);
+        
+        if (searchTerm.length < 2) {
+            $results.hide().empty();
+            return;
+        }
+        
+        userSearchTimeout = setTimeout(function() {
+            $.ajax({
+                url: wpual_ajax.ajax_url,
+                type: 'GET',
+                data: {
+                    action: 'wpual_search_users',
+                    nonce: wpual_ajax.nonce,
+                    search: searchTerm
+                },
+                success: function(response) {
+                    userSearchResults = response;
+                    displayUserResults(response);
+                },
+                error: function() {
+                    $results.html('<div class="user-result-item error">Error loading users</div>').show();
+                }
+            });
+        }, 300);
+    });
+    
+    function displayUserResults(users) {
+        var $results = $('#user_search_results');
+        
+        if (users.length === 0) {
+            $results.html('<div class="user-result-item no-results">No users found</div>').show();
+            return;
+        }
+        
+        var html = '';
+        users.forEach(function(user) {
+            html += '<div class="user-result-item" data-user-id="' + user.id + '" data-user-text="' + user.text + '">';
+            html += '<div class="user-name">' + user.display_name + '</div>';
+            html += '<div class="user-email">' + user.email + '</div>';
+            html += '</div>';
+        });
+        
+        $results.html(html).show();
+    }
+    
+    // Handle user selection
+    $(document).on('click', '.user-result-item', function() {
+        var userId = $(this).data('user-id');
+        var userText = $(this).data('user-text');
+        var userName = $(this).find('.user-name').text();
+        var userEmail = $(this).find('.user-email').text();
+        
+        $('#user_id').val(userId);
+        $('#user_search').val('').hide();
+        $('#user_search_results').hide();
+        
+        var selectedUserHtml = '<div class="selected-user" id="selected_user_display">';
+        selectedUserHtml += '<span>' + userName + ' (' + userEmail + ')</span>';
+        selectedUserHtml += '<button type="button" class="remove-user" id="remove_user">&times;</button>';
+        selectedUserHtml += '</div>';
+        
+        $('.user-search-container').append(selectedUserHtml);
+    });
+    
+    // Handle user removal
+    $(document).on('click', '.remove-user', function() {
+        $('#user_id').val('');
+        $('#selected_user_display').remove();
+        $('#user_search').show().val('').focus();
+    });
+    
+    // Hide results when clicking outside
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.user-search-container').length) {
+            $('#user_search_results').hide();
+        }
+    });
+    
+    // Show search input when clicking on container if no user is selected
+    $('.user-search-container').on('click', function() {
+        if (!$('#user_id').val()) {
+            $('#user_search').show().focus();
+        }
+    });
+    
+    // Initialize: show search input if no user is selected
+    if (!$('#user_id').val()) {
+        $('#user_search').show();
+    }
+    
+    // Keyboard navigation for search results
+    $('#user_search').on('keydown', function(e) {
+        var $results = $('#user_search_results');
+        var $items = $results.find('.user-result-item');
+        var currentIndex = $items.index($results.find('.user-result-item.highlighted'));
+        
+        switch(e.keyCode) {
+            case 38: // Up arrow
+                e.preventDefault();
+                $items.removeClass('highlighted');
+                if (currentIndex > 0) {
+                    $items.eq(currentIndex - 1).addClass('highlighted');
+                } else {
+                    $items.last().addClass('highlighted');
+                }
+                break;
+            case 40: // Down arrow
+                e.preventDefault();
+                $items.removeClass('highlighted');
+                if (currentIndex < $items.length - 1) {
+                    $items.eq(currentIndex + 1).addClass('highlighted');
+                } else {
+                    $items.first().addClass('highlighted');
+                }
+                break;
+            case 13: // Enter
+                e.preventDefault();
+                var $highlighted = $results.find('.user-result-item.highlighted');
+                if ($highlighted.length) {
+                    $highlighted.click();
+                }
+                break;
+            case 27: // Escape
+                $results.hide();
+                break;
+        }
+    });
+    
+    // Highlight first result on hover
+    $(document).on('mouseenter', '.user-result-item', function() {
+        $('#user_search_results .user-result-item').removeClass('highlighted');
+        $(this).addClass('highlighted');
+    });
+    
 }); 

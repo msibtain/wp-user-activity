@@ -76,8 +76,7 @@ if (!empty($date_to)) {
 }
 
 if (!empty($search)) {
-    $where_conditions[] = '(activity_details LIKE %s OR page_url LIKE %s OR user_ip LIKE %s)';
-    $where_values[] = '%' . $wpdb->esc_like($search) . '%';
+    $where_conditions[] = '(activity_details LIKE %s OR page_url LIKE %s)';
     $where_values[] = '%' . $wpdb->esc_like($search) . '%';
     $where_values[] = '%' . $wpdb->esc_like($search) . '%';
 }
@@ -102,12 +101,14 @@ $logs = $wpdb->get_results($wpdb->prepare($query, $query_values));
 // Get unique activity types for filter
 $activity_types = $wpdb->get_col("SELECT DISTINCT activity_type FROM $table_name ORDER BY activity_type");
 
-// Get users for filter
+// Get users for filter (only get users who have activity logs)
 $users = $wpdb->get_results("SELECT DISTINCT user_id FROM $table_name WHERE user_id IS NOT NULL AND user_id > 0");
 
 // Get available user roles for filter
 $wp_roles = wp_roles();
 $available_roles = $wp_roles->get_names();
+
+
 
 $total_pages = ceil($total_logs / $per_page);
 ?>
@@ -126,7 +127,11 @@ $total_pages = ceil($total_logs / $per_page);
             <p><?php _e('Activity Types', 'wp-user-activity-logger'); ?></p>
         </div>
         <div class="stat-box">
-            <h3><?php echo count($users); ?></h3>
+            <h3>
+                <a href="admin.php?page=wp-user-activity-active-users">
+                    <?php echo count($users); ?>
+                </a>
+            </h3>
             <p><?php _e('Active Users', 'wp-user-activity-logger'); ?></p>
         </div>
     </div>
@@ -151,17 +156,21 @@ $total_pages = ceil($total_logs / $per_page);
                 
                 <div class="filter-group">
                     <label for="user_id"><?php _e('User:', 'wp-user-activity-logger'); ?></label>
-                    <select name="user_id" id="user_id">
-                        <option value=""><?php _e('All Users', 'wp-user-activity-logger'); ?></option>
-                        <?php foreach ($users as $user_data): ?>
-                            <?php $user = get_user_by('id', $user_data->user_id); ?>
-                            <?php if ($user): ?>
-                                <option value="<?php echo $user->ID; ?>" <?php selected($user_filter, $user->ID); ?>>
-                                    <?php echo esc_html($user->display_name . ' (' . $user->user_email . ')'); ?>
-                                </option>
+                    <input type="text" id="user_search" placeholder="<?php _e('Search users...', 'wp-user-activity-logger'); ?>" autocomplete="off">
+                    <div class="user-search-container">
+                        
+                        <input type="hidden" name="user_id" id="user_id" value="<?php echo esc_attr($user_filter); ?>">
+                        <div class="user-search-results" id="user_search_results"></div>
+                        <?php if ($user_filter): ?>
+                            <?php $selected_user = get_user_by('id', $user_filter); ?>
+                            <?php if ($selected_user): ?>
+                                <div class="selected-user" id="selected_user_display">
+                                    <span><?php echo esc_html($selected_user->display_name . ' (' . $selected_user->user_email . ')'); ?></span>
+                                    <button type="button" class="remove-user" id="remove_user">&times;</button>
+                                </div>
                             <?php endif; ?>
-                        <?php endforeach; ?>
-                    </select>
+                        <?php endif; ?>
+                    </div>
                 </div>
                 
                 <div class="filter-group">
@@ -188,7 +197,7 @@ $total_pages = ceil($total_logs / $per_page);
                 
                 <div class="filter-group">
                     <label for="search"><?php _e('Search:', 'wp-user-activity-logger'); ?></label>
-                    <input type="text" name="search" id="search" value="<?php echo esc_attr($search); ?>" placeholder="<?php _e('Search in details, URL, or IP...', 'wp-user-activity-logger'); ?>">
+                    <input type="text" name="search" id="search" value="<?php echo esc_attr($search); ?>" placeholder="<?php _e('Search in details or URL...', 'wp-user-activity-logger'); ?>">
                 </div>
                 
                 <div class="filter-actions">
@@ -201,7 +210,19 @@ $total_pages = ceil($total_logs / $per_page);
     
     <!-- Actions -->
     <div class="wpual-actions">
-        <button type="button" class="button" id="export-logs"><?php _e('Export CSV', 'wp-user-activity-logger'); ?></button>
+        <?php 
+        $export_url = admin_url('admin-ajax.php') . '?' . http_build_query(array(
+            'action' => 'wpual_export_logs',
+            'nonce' => wp_create_nonce('wpual_nonce'),
+            'activity_type' => $activity_type_filter,
+            'user_id' => $user_filter,
+            'user_role' => $user_role_filter,
+            'date_from' => $date_from,
+            'date_to' => $date_to,
+            'search' => $search
+        ));
+        ?>
+        <a href="<?php echo esc_url($export_url); ?>" class="button" target="_blank"><?php _e('Export CSV', 'wp-user-activity-logger'); ?></a>
         <button type="button" class="button button-secondary" id="clear-logs"><?php _e('Clear All Logs', 'wp-user-activity-logger'); ?></button>
     </div>
     
@@ -349,68 +370,3 @@ $total_pages = ceil($total_logs / $per_page);
         </div>
     </form>
 </div>
-
-<script>
-jQuery(document).ready(function($) {
-    // Export logs
-    $('#export-logs').on('click', function() {
-        var form = $('<form>', {
-            'method': 'POST',
-            'action': ajaxurl
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'action',
-            'value': 'wpual_export_logs'
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'nonce',
-            'value': wpual_ajax.nonce
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'activity_type',
-            'value': $('#activity_type').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'user_id',
-            'value': $('#user_id').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'user_role',
-            'value': $('#user_role').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'date_from',
-            'value': $('#date_from').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'date_to',
-            'value': $('#date_to').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'search',
-            'value': $('#search').val()
-        }));
-        
-        $('body').append(form);
-        form.submit();
-        form.remove();
-    });
-    
-    // Clear logs
-    $('#clear-logs').on('click', function() {
-        if (confirm(wpual_ajax.confirm_clear)) {
-            $.post(ajaxurl, {
-                action: 'wpual_clear_logs',
-                nonce: wpual_ajax.nonce
-            }, function(response) {
-                if (response.success) {
-                    alert(response.data);
-                    location.reload();
-                } else {
-                    alert(response.data);
-                }
-            });
-        }
-    });
-});
-</script>
