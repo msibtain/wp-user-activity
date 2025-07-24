@@ -121,11 +121,83 @@ $overall_stats = $wpdb->get_row($wpdb->prepare($overall_stats_query, $date_from)
 <div class="wrap">
     <h1><?php _e('Active Users', 'wp-user-activity-logger'); ?></h1>
     
+    <!-- Filters -->
+    <div class="wpual-filters" style="display: none;">
+        <form method="get" action="">
+            <input type="hidden" name="page" value="wp-user-activity-active-users">
+            
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="user_role"><?php _e('User Role:', 'wp-user-activity-logger'); ?></label>
+                    <select name="user_role" id="user_role">
+                        <option value=""><?php _e('All Roles', 'wp-user-activity-logger'); ?></option>
+                        <?php foreach ($available_roles as $role_key => $role_name): ?>
+                            <option value="<?php echo esc_attr($role_key); ?>" <?php selected($user_role_filter, $role_key); ?>>
+                                <?php echo esc_html($role_name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="activity_period"><?php _e('Activity Period:', 'wp-user-activity-logger'); ?></label>
+                    <select name="activity_period" id="activity_period">
+                        <option value="7" <?php selected($activity_period, '7'); ?>><?php _e('Last 7 days', 'wp-user-activity-logger'); ?></option>
+                        <option value="30" <?php selected($activity_period, '30'); ?>><?php _e('Last 30 days', 'wp-user-activity-logger'); ?></option>
+                        <option value="60" <?php selected($activity_period, '60'); ?>><?php _e('Last 60 days', 'wp-user-activity-logger'); ?></option>
+                        <option value="90" <?php selected($activity_period, '90'); ?>><?php _e('Last 90 days', 'wp-user-activity-logger'); ?></option>
+                        <option value="180" <?php selected($activity_period, '180'); ?>><?php _e('Last 180 days', 'wp-user-activity-logger'); ?></option>
+                        <option value="365" <?php selected($activity_period, '365'); ?>><?php _e('Last 365 days', 'wp-user-activity-logger'); ?></option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="search"><?php _e('Search:', 'wp-user-activity-logger'); ?></label>
+                    <input type="text" name="search" id="search" value="<?php echo esc_attr($search); ?>" placeholder="<?php _e('Search by username, email, or display name', 'wp-user-activity-logger'); ?>">
+                </div>
+                
+                <div class="filter-actions">
+                    <input type="submit" class="button button-primary" value="<?php _e('Apply Filters', 'wp-user-activity-logger'); ?>">
+                    <a href="<?php echo admin_url('admin.php?page=wp-user-activity-active-users'); ?>" class="button"><?php _e('Clear Filters', 'wp-user-activity-logger'); ?></a>
+                </div>
+            </div>
+        </form>
+    </div>
     
+    <!-- Overall Statistics -->
+    <?php if ($overall_stats): ?>
+    <div class="wpual-stats" style="display: none;">
+        <div class="stat-box">
+            <h3><?php echo number_format($overall_stats->total_active_users); ?></h3>
+            <p><?php _e('Active Users', 'wp-user-activity-logger'); ?></p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo number_format($overall_stats->total_activities); ?></h3>
+            <p><?php _e('Total Activities', 'wp-user-activity-logger'); ?></p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo number_format(round($overall_stats->avg_activities_per_user, 1)); ?></h3>
+            <p><?php _e('Avg Activities/User', 'wp-user-activity-logger'); ?></p>
+        </div>
+        <div class="stat-box">
+            <h3><?php echo esc_html($activity_period); ?></h3>
+            <p><?php _e('Days Period', 'wp-user-activity-logger'); ?></p>
+        </div>
+    </div>
+    <?php endif; ?>
     
     <!-- Actions -->
     <div class="wpual-actions">
-        <button type="button" class="button" id="export-active-users"><?php _e('Export CSV', 'wp-user-activity-logger'); ?></button>
+        <?php 
+        $export_url = admin_url('admin-ajax.php') . '?' . http_build_query(array(
+            'action' => 'wpual_export_active_users',
+            'nonce' => wp_create_nonce('wpual_nonce'),
+            'user_role' => $user_role_filter,
+            'activity_period' => $activity_period,
+            'search' => $search
+        ));
+        ?>
+        <a href="<?php echo esc_url($export_url); ?>" class="button" target="_blank"><?php _e('Export CSV', 'wp-user-activity-logger'); ?></a>
     </div>
     
     <!-- Users Table -->
@@ -275,38 +347,4 @@ $overall_stats = $wpdb->get_row($wpdb->prepare($overall_stats_query, $date_from)
     </div>
 </div>
 
-<script>
-jQuery(document).ready(function($) {
-    // Export active users
-    $('#export-active-users').on('click', function() {
-        var form = $('<form>', {
-            'method': 'POST',
-            'action': ajaxurl
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'action',
-            'value': 'wpual_export_active_users'
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'nonce',
-            'value': wpual_ajax.nonce
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'user_role',
-            'value': $('#user_role').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'activity_period',
-            'value': $('#activity_period').val()
-        })).append($('<input>', {
-            'type': 'hidden',
-            'name': 'search',
-            'value': $('#search').val()
-        }));
-        
-        $('body').append(form);
-        form.submit();
-        form.remove();
-    });
-});
-</script> 
+ 
