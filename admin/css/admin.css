@@ -78,6 +78,20 @@
     gap: 10px;
 }
 
+/* Chart container */
+.wpual-chart {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 16px;
+    margin: 20px 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.wpual-chart h2 {
+    margin-top: 0;
+}
+
 .activity-type {
     display: inline-block;
     padding: 3px 8px;
@@ -239,6 +253,115 @@
 /* Checkbox improvements */
 .check-column input[type="checkbox"] {
     margin: 0;
+}
+
+/* Active users page specific styles */
+.wpual-actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.wpual-actions .button {
+    margin: 0;
+}
+
+/* Bulk actions styling */
+.bulkactions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.bulkactions select {
+    min-width: 150px;
+}
+
+.bulkactions .button {
+    margin: 0;
+}
+
+/* Checkbox column styling */
+.column-cb {
+    width: 30px;
+    text-align: center;
+}
+
+.check-column {
+    width: 30px;
+    text-align: center;
+}
+
+/* Responsive improvements for active users page */
+@media (max-width: 782px) {
+    .wpual-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .bulkactions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .bulkactions select {
+        min-width: auto;
+    }
+}
+
+/* Active users table improvements */
+.wp-list-table .column-user {
+    width: 200px;
+}
+
+.wp-list-table .column-role {
+    width: 120px;
+}
+
+.wp-list-table .column-activities {
+    width: 100px;
+    text-align: center;
+}
+
+.wp-list-table .column-days {
+    width: 100px;
+    text-align: center;
+}
+
+.wp-list-table .column-duration {
+    width: 120px;
+    text-align: center;
+}
+
+.wp-list-table .column-types {
+    width: 150px;
+}
+
+.wp-list-table .column-first,
+.wp-list-table .column-last {
+    width: 140px;
+}
+
+.wp-list-table .column-actions {
+    width: 100px;
+    text-align: center;
+}
+
+/* Selected users counter */
+.selected-count {
+    background: #0073aa;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    margin-left: 10px;
+}
+
+/* Export button states */
+#export-selected-users:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* Pagination improvements */

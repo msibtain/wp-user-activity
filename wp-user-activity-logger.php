@@ -52,6 +52,7 @@ class WP_User_Activity_Logger {
         add_action('wp_ajax_nopriv_wpual_update_duration', array($this, 'update_duration'));
         add_action('wp_ajax_wpual_search_users', array($this, 'search_users'));
         add_action('wp_ajax_nopriv_wpual_search_users', array($this, 'search_users'));
+        add_action('wp_ajax_wpual_test_ajax', array($this, 'test_ajax'));
     }
     
     /**
@@ -829,11 +830,29 @@ class WP_User_Activity_Logger {
      * Export active users to CSV
      */
     public function export_active_users() {
+        // Enable error reporting for debugging
+        error_reporting(E_ALL);
+        ini_set('display_errors', 1);
+        
+        // Debug: Log the request
+        error_log('WPUAL Export Active Users: Function called');
+        error_log('WPUAL Export Active Users Request POST: ' . print_r($_POST, true));
+        error_log('WPUAL Export Active Users Request GET: ' . print_r($_GET, true));
+        error_log('WPUAL Export Active Users: DOING_AJAX = ' . (defined('DOING_AJAX') && DOING_AJAX ? 'true' : 'false'));
+        error_log('WPUAL Export Active Users: Current user can manage_options = ' . (current_user_can('manage_options') ? 'true' : 'false'));
+        error_log('WPUAL Export Active Users: REQUEST_METHOD = ' . $_SERVER['REQUEST_METHOD']);
+        error_log('WPUAL Export Active Users: REQUEST_URI = ' . $_SERVER['REQUEST_URI']);
+        
         if (!current_user_can('manage_options')) {
+            error_log('WPUAL Export Active Users: Permission denied');
             wp_die(__('You do not have permission to perform this action.', 'wp-user-activity-logger'));
         }
         
-        if (!wp_verify_nonce($_REQUEST['nonce'], 'wpual_nonce')) {
+        // Handle both POST and GET requests
+        $nonce = isset($_POST['nonce']) ? $_POST['nonce'] : (isset($_GET['nonce']) ? $_GET['nonce'] : '');
+        
+        if (!wp_verify_nonce($nonce, 'wpual_nonce')) {
+            error_log('WPUAL Export Active Users: Nonce verification failed');
             wp_die(__('Security check failed.', 'wp-user-activity-logger'));
         }
         
@@ -844,6 +863,7 @@ class WP_User_Activity_Logger {
         $user_role_filter = isset($_REQUEST['user_role']) ? sanitize_text_field($_REQUEST['user_role']) : '';
         $activity_period = isset($_REQUEST['activity_period']) ? sanitize_text_field($_REQUEST['activity_period']) : '30';
         $search = isset($_REQUEST['search']) ? sanitize_text_field($_REQUEST['search']) : '';
+        $selected_user_ids = isset($_REQUEST['selected_user_ids']) ? array_map('intval', $_REQUEST['selected_user_ids']) : array();
         
         // Calculate date range based on activity period
         $date_from = date('Y-m-d H:i:s', strtotime("-{$activity_period} days"));
@@ -855,32 +875,40 @@ class WP_User_Activity_Logger {
         $where_conditions[] = 'created_at >= %s';
         $where_values[] = $date_from;
         
-        if (!empty($user_role_filter)) {
-            // Get users with the specified role
-            $role_users = get_users(array('role' => $user_role_filter, 'fields' => 'ID'));
-            if (!empty($role_users)) {
-                $placeholders = implode(',', array_fill(0, count($role_users), '%d'));
-                $where_conditions[] = "user_id IN ($placeholders)";
-                $where_values = array_merge($where_values, $role_users);
-            } else {
-                $where_conditions[] = '1 = 0';
+        // If specific users are selected, only export those users
+        if (!empty($selected_user_ids)) {
+            $placeholders = implode(',', array_fill(0, count($selected_user_ids), '%d'));
+            $where_conditions[] = "user_id IN ($placeholders)";
+            $where_values = array_merge($where_values, $selected_user_ids);
+        } else {
+            // Apply filters only if no specific users are selected
+            if (!empty($user_role_filter)) {
+                // Get users with the specified role
+                $role_users = get_users(array('role' => $user_role_filter, 'fields' => 'ID'));
+                if (!empty($role_users)) {
+                    $placeholders = implode(',', array_fill(0, count($role_users), '%d'));
+                    $where_conditions[] = "user_id IN ($placeholders)";
+                    $where_values = array_merge($where_values, $role_users);
+                } else {
+                    $where_conditions[] = '1 = 0';
+                }
             }
-        }
-        
-        if (!empty($search)) {
-            // Search in user details
-            $search_users = get_users(array(
-                'search' => '*' . $search . '*',
-                'search_columns' => array('user_login', 'user_email', 'display_name'),
-                'fields' => 'ID'
-            ));
             
-            if (!empty($search_users)) {
-                $placeholders = implode(',', array_fill(0, count($search_users), '%d'));
-                $where_conditions[] = "user_id IN ($placeholders)";
-                $where_values = array_merge($where_values, $search_users);
-            } else {
-                $where_conditions[] = '1 = 0';
+            if (!empty($search)) {
+                // Search in user details
+                $search_users = get_users(array(
+                    'search' => '*' . $search . '*',
+                    'search_columns' => array('user_login', 'user_email', 'display_name'),
+                    'fields' => 'ID'
+                ));
+                
+                if (!empty($search_users)) {
+                    $placeholders = implode(',', array_fill(0, count($search_users), '%d'));
+                    $where_conditions[] = "user_id IN ($placeholders)";
+                    $where_values = array_merge($where_values, $search_users);
+                } else {
+                    $where_conditions[] = '1 = 0';
+                }
             }
         }
         
@@ -906,20 +934,33 @@ class WP_User_Activity_Logger {
         
         $active_users = $wpdb->get_results($wpdb->prepare($query, $where_values));
         
+        // Debug: Log the query and results
+        error_log('WPUAL Export Active Users Query: ' . $wpdb->prepare($query, $where_values));
+        error_log('WPUAL Export Active Users Results Count: ' . count($active_users));
+        error_log('WPUAL Export Active Users Results: ' . print_r($active_users, true));
+        
         if (empty($active_users)) {
-            wp_send_json_error(__('No active users to export.', 'wp-user-activity-logger'));
+            error_log('WPUAL Export Active Users: No users found');
+            wp_die(__('No active users to export.', 'wp-user-activity-logger'));
         }
         
         // Create filename with filter info
         $filename_parts = array('active-users', date('Y-m-d-H-i-s'));
-        if (!empty($user_role_filter)) {
+        if (!empty($selected_user_ids)) {
+            $filename_parts[] = 'selected-' . count($selected_user_ids);
+        } elseif (!empty($user_role_filter)) {
             $filename_parts[] = $user_role_filter;
         }
         $filename_parts[] = $activity_period . 'days';
         $filename = implode('-', $filename_parts) . '.csv';
         
+        // Debug: Log the filename
+        error_log('WPUAL Export Active Users Filename: ' . $filename);
+        
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Expires: Sat, 26 Jul 1997 05:00:00 GMT');
         
         $output = fopen('php://output', 'w');
         
@@ -937,6 +978,9 @@ class WP_User_Activity_Logger {
             'First Activity', 
             'Last Activity'
         ));
+        
+        // Debug: Log the data processing
+        error_log('WPUAL Export Active Users: Starting data processing for ' . count($active_users) . ' users');
         
         // Add data
         foreach ($active_users as $user_data) {
@@ -971,6 +1015,10 @@ class WP_User_Activity_Logger {
         }
         
         fclose($output);
+        
+        // Debug: Log completion
+        error_log('WPUAL Export Active Users: Export completed successfully');
+        
         exit;
     }
     
@@ -1012,6 +1060,13 @@ class WP_User_Activity_Logger {
         }
         
         wp_send_json($users);
+    }
+
+    /**
+     * Test AJAX function
+     */
+    public function test_ajax() {
+        wp_send_json_success('AJAX test successful!');
     }
 }
 

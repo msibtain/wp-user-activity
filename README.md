@@ -19,8 +19,9 @@ A comprehensive WordPress plugin that logs user activity across your website, in
 - **Active Users Page**: Dedicated page showing user activity statistics and engagement metrics
 - **Advanced Filtering**: Filter by activity type, user, user role, date range, and search terms
 - **Pagination**: Navigate through large datasets efficiently
-- **Bulk Operations**: Select and delete multiple logs at once
+- **Bulk Operations**: Select and delete multiple logs at once, export selected users
 - **Export Functionality**: Export logs and active users to CSV format for external analysis
+- **Selective Export**: Choose specific users to export using checkboxes
 - **Duration Display**: View time spent on each page in a readable format
 - **Statistics Overview**: Quick stats on total logs, activity types, and active users
 - **Responsive Design**: Works perfectly on desktop and mobile devices
@@ -99,6 +100,8 @@ CREATE TABLE {prefix}_activity_log (
 1. Use the "Export CSV" button to download all current logs
 2. The export will include all filtered results if filters are applied
 3. The CSV file will be named with the current timestamp
+4. **Selective Export**: Use checkboxes to select specific users and export only those users
+5. **Bulk Export**: Use the bulk actions dropdown to export selected users
 
 ### Managing Logs
 - **Bulk Delete**: Select multiple logs using checkboxes and delete them
