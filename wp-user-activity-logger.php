@@ -406,6 +406,15 @@ class WP_User_Activity_Logger {
             'wp-user-activity-active-users',
             array($this, 'active_users_page')
         );
+
+        add_submenu_page(
+            'wp-user-activity-log',
+            __('Active users at glance', 'wp-user-activity-logger'),
+            __('Active users at glance', 'wp-user-activity-logger'),
+            'manage_options',
+            'wp-user-activity-active-glance',
+            array($this, 'active_users_glance_page')
+        );
     }
     
     /**
@@ -420,6 +429,13 @@ class WP_User_Activity_Logger {
      */
     public function active_users_page() {
         include WPUAL_PLUGIN_PATH . 'admin/active-users-page.php';
+    }
+    
+    /**
+     * Active users at glance page callback
+     */
+    public function active_users_glance_page() {
+        include WPUAL_PLUGIN_PATH . 'admin/active-users-glance.php';
     }
     
     /**
@@ -519,8 +535,12 @@ class WP_User_Activity_Logger {
      * Enqueue admin scripts
      */
     public function enqueue_admin_scripts($hook) {
-        // Load scripts for both main activity log page and active users page
-        if ($hook !== 'toplevel_page_wp-user-activity-log' && $hook !== 'activity-log_page_wp-user-activity-active-users') {
+        // Load scripts for main activity log page, active users page, and glance page
+        if (
+            $hook !== 'toplevel_page_wp-user-activity-log' &&
+            $hook !== 'activity-log_page_wp-user-activity-active-users' &&
+            $hook !== 'activity-log_page_wp-user-activity-active-glance'
+        ) {
             return;
         }
         
