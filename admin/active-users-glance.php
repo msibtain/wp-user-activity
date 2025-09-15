@@ -61,41 +61,10 @@ for ($ts = $current; $ts <= $end; $ts = strtotime('+1 day', $ts)) {
     $values[] = isset($by_date[$key]) ? $by_date[$key] : 0;
 }
 
-// Build Users list for dropdown (users with activity in the period/filter)
-$users_for_dropdown = array();
-$users_ids_query = "
-    SELECT DISTINCT user_id
-    FROM $table_name
-    $where_clause
-    ORDER BY user_id ASC
-    LIMIT 500
-";
-$dropdown_user_ids = $wpdb->get_col($wpdb->prepare($users_ids_query, $where_values));
-if (!empty($dropdown_user_ids)) {
-    $wp_users = get_users(array(
-        'include' => $dropdown_user_ids,
-        'orderby' => 'display_name',
-        'order' => 'ASC',
-        'fields' => array('ID', 'display_name', 'user_email')
-    ));
-    foreach ($wp_users as $uobj) {
-        $users_for_dropdown[] = array(
-            'id' => $uobj->ID,
-            'label' => $uobj->display_name . ' (' . $uobj->user_email . ')'
-        );
-    }
-}
-
-// User dropdown helper
-function wpual_glance_user_label($user) {
-    return $user->display_name . ' (' . $user->user_email . ')';
-}
-
-// Preload one user display if selected
-$selected_user_label = '';
+// Get selected user info if user_id is provided
+$selected_user = null;
 if ($user_id > 0) {
-    $u = get_user_by('id', $user_id);
-    if ($u) { $selected_user_label = wpual_glance_user_label($u); }
+    $selected_user = get_user_by('id', $user_id);
 }
 ?>
 
@@ -115,17 +84,18 @@ if ($user_id > 0) {
                     <input type="date" id="date_to" name="date_to" value="<?php echo esc_attr($date_to); ?>">
                 </div>
                 <div class="filter-group">
-                    <label for="user_id"><?php _e('User', 'wp-user-activity-logger'); ?></label>
-                    <select id="user_id" name="user_id" data-loaded="true">
-                        <option value="0"><?php _e('All users', 'wp-user-activity-logger'); ?></option>
-                        <?php if (!empty($users_for_dropdown)): ?>
-                            <?php foreach ($users_for_dropdown as $ud): ?>
-                                <option value="<?php echo esc_attr($ud['id']); ?>" <?php selected($user_id, $ud['id']); ?>><?php echo esc_html($ud['label']); ?></option>
-                            <?php endforeach; ?>
-                        <?php elseif ($user_id > 0 && $selected_user_label): ?>
-                            <option value="<?php echo esc_attr($user_id); ?>" selected><?php echo esc_html($selected_user_label); ?></option>
+                    <label for="user_id"><?php _e('User:', 'wp-user-activity-logger'); ?></label>
+                    <input type="text" id="user_search" placeholder="<?php _e('Search users...', 'wp-user-activity-logger'); ?>" autocomplete="off">
+                    <div class="user-search-container">
+                        <input type="hidden" name="user_id" id="user_id" value="<?php echo esc_attr($user_id); ?>">
+                        <div class="user-search-results" id="user_search_results"></div>
+                        <?php if ($user_id > 0 && $selected_user): ?>
+                            <div class="selected-user" id="selected_user_display">
+                                <span><?php echo esc_html($selected_user->display_name . ' (' . $selected_user->user_email . ')'); ?></span>
+                                <button type="button" class="remove-user" id="remove_user">&times;</button>
+                            </div>
                         <?php endif; ?>
-                    </select>
+                    </div>
                 </div>
                 <div class="filter-group">
                     <label for="activity_type"><?php _e('Activity Type', 'wp-user-activity-logger'); ?></label>
@@ -211,7 +181,147 @@ if ($user_id > 0) {
             }
         });
 
-        // Dropdown is pre-populated server-side; no lazy load needed
+        // User search functionality
+        var userSearchTimeout;
+        var userSearchResults = [];
+        
+        $('#user_search').on('keyup', function() {
+            var searchTerm = $(this).val().trim();
+            var $results = $('#user_search_results');
+            
+            clearTimeout(userSearchTimeout);
+            
+            if (searchTerm.length < 2) {
+                $results.hide().empty();
+                return;
+            }
+            
+            userSearchTimeout = setTimeout(function() {
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'GET',
+                    data: {
+                        action: 'wpual_search_users',
+                        search: searchTerm
+                    },
+                    success: function(response) {
+                        userSearchResults = response;
+                        displayUserResults(response);
+                    },
+                    error: function() {
+                        $results.html('<div class="user-result-item error">Error loading users</div>').show();
+                    }
+                });
+            }, 300);
+        });
+        
+        function displayUserResults(users) {
+            var $results = $('#user_search_results');
+            
+            if (users.length === 0) {
+                $results.html('<div class="user-result-item no-results">No users found</div>').show();
+                return;
+            }
+            
+            var html = '';
+            users.forEach(function(user) {
+                html += '<div class="user-result-item" data-user-id="' + user.id + '" data-user-text="' + user.text + '">';
+                html += '<div class="user-name">' + user.display_name + '</div>';
+                html += '<div class="user-email">' + user.email + '</div>';
+                html += '</div>';
+            });
+            
+            $results.html(html).show();
+        }
+        
+        // Handle user selection
+        $(document).on('click', '.user-result-item', function() {
+            var userId = $(this).data('user-id');
+            var userText = $(this).data('user-text');
+            var userName = $(this).find('.user-name').text();
+            var userEmail = $(this).find('.user-email').text();
+            
+            $('#user_id').val(userId);
+            $('#user_search').val('').hide();
+            $('#user_search_results').hide();
+            
+            var selectedUserHtml = '<div class="selected-user" id="selected_user_display">';
+            selectedUserHtml += '<span>' + userName + ' (' + userEmail + ')</span>';
+            selectedUserHtml += '<button type="button" class="remove-user" id="remove_user">&times;</button>';
+            selectedUserHtml += '</div>';
+            
+            $('.user-search-container').append(selectedUserHtml);
+        });
+        
+        // Handle user removal
+        $(document).on('click', '.remove-user', function() {
+            $('#user_id').val('');
+            $('#selected_user_display').remove();
+            $('#user_search').show().val('').focus();
+        });
+        
+        // Hide results when clicking outside
+        $(document).on('click', function(e) {
+            if (!$(e.target).closest('.user-search-container').length) {
+                $('#user_search_results').hide();
+            }
+        });
+        
+        // Show search input when clicking on container if no user is selected
+        $('.user-search-container').on('click', function() {
+            if (!$('#user_id').val()) {
+                $('#user_search').show().focus();
+            }
+        });
+        
+        // Initialize: show search input if no user is selected
+        if (!$('#user_id').val()) {
+            $('#user_search').show();
+        }
+        
+        // Keyboard navigation for search results
+        $('#user_search').on('keydown', function(e) {
+            var $results = $('#user_search_results');
+            var $items = $results.find('.user-result-item');
+            var currentIndex = $items.index($results.find('.user-result-item.highlighted'));
+            
+            switch(e.keyCode) {
+                case 38: // Up arrow
+                    e.preventDefault();
+                    $items.removeClass('highlighted');
+                    if (currentIndex > 0) {
+                        $items.eq(currentIndex - 1).addClass('highlighted');
+                    } else {
+                        $items.last().addClass('highlighted');
+                    }
+                    break;
+                case 40: // Down arrow
+                    e.preventDefault();
+                    $items.removeClass('highlighted');
+                    if (currentIndex < $items.length - 1) {
+                        $items.eq(currentIndex + 1).addClass('highlighted');
+                    } else {
+                        $items.first().addClass('highlighted');
+                    }
+                    break;
+                case 13: // Enter
+                    e.preventDefault();
+                    var $highlighted = $results.find('.user-result-item.highlighted');
+                    if ($highlighted.length) {
+                        $highlighted.click();
+                    }
+                    break;
+                case 27: // Escape
+                    $results.hide();
+                    break;
+            }
+        });
+        
+        // Highlight first result on hover
+        $(document).on('mouseenter', '.user-result-item', function() {
+            $('#user_search_results .user-result-item').removeClass('highlighted');
+            $(this).addClass('highlighted');
+        });
     });
 })(jQuery);
 </script>

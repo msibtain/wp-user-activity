@@ -29,7 +29,7 @@ class WP_User_Activity_Logger {
      */
     public function __construct() {
         add_action('init', array($this, 'init'));
-        add_action('wp_loaded', array($this, 'log_page_view'));
+        add_action('wp_head', array($this, 'log_page_view'));
         add_action('wp_login', array($this, 'log_user_login'), 10, 2);
         add_action('wp_logout', array($this, 'log_user_logout'));
         add_action('wp_head', array($this, 'log_category_view'));
