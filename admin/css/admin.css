@@ -617,3 +617,162 @@
         font-size: 12px;
     }
 }
+
+/* Top Users Table Styles */
+.wpual-top-users {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.wpual-top-users h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #23282d;
+    font-size: 18px;
+}
+
+.wpual-top-users .description {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 20px;
+    font-style: italic;
+}
+
+/* Rank badge styling */
+.rank-badge {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-weight: bold;
+    font-size: 12px;
+    color: #fff;
+}
+
+.rank-badge.rank-1 {
+    background: #ffd700;
+    color: #333;
+}
+
+.rank-badge.rank-2 {
+    background: #c0c0c0;
+    color: #333;
+}
+
+.rank-badge.rank-3 {
+    background: #cd7f32;
+    color: #fff;
+}
+
+.rank-badge.rank-4,
+.rank-badge.rank-5,
+.rank-badge.rank-6,
+.rank-badge.rank-7,
+.rank-badge.rank-8,
+.rank-badge.rank-9,
+.rank-badge.rank-10 {
+    background: #0073aa;
+    color: #fff;
+}
+
+/* Activity count styling */
+.activity-count {
+    font-weight: bold;
+    color: #0073aa;
+    font-size: 14px;
+}
+
+/* Percentage bar styling */
+.percentage-bar {
+    position: relative;
+    background: #f0f0f0;
+    border-radius: 10px;
+    height: 20px;
+    overflow: hidden;
+    min-width: 80px;
+}
+
+.percentage-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa 0%, #005a87 100%);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.percentage-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: bold;
+    color: #333;
+    text-shadow: 0 0 2px rgba(255,255,255,0.8);
+}
+
+/* Column widths for top users table */
+.wpual-top-users .wp-list-table .column-rank {
+    width: 60px;
+    text-align: center;
+}
+
+.wpual-top-users .wp-list-table .column-user {
+    width: 200px;
+}
+
+.wpual-top-users .wp-list-table .column-email {
+    width: 250px;
+}
+
+.wpual-top-users .wp-list-table .column-activity-count {
+    width: 120px;
+    text-align: center;
+}
+
+.wpual-top-users .wp-list-table .column-percentage {
+    width: 150px;
+    text-align: center;
+}
+
+.wpual-top-users .wp-list-table .column-video {
+    width: 250px;
+}
+
+.wpual-top-users .wp-list-table .column-view-count {
+    width: 120px;
+    text-align: center;
+}
+
+.wpual-top-users .wp-list-table .column-avg-duration {
+    width: 150px;
+    text-align: center;
+}
+
+/* Responsive adjustments for top users table */
+@media (max-width: 782px) {
+    .wpual-top-users {
+        padding: 15px;
+    }
+    
+    .wpual-top-users .wp-list-table .column-email {
+        display: none;
+    }
+    
+    .wpual-top-users .wp-list-table .column-percentage {
+        width: 100px;
+    }
+    
+    .percentage-bar {
+        min-width: 60px;
+    }
+    
+    .percentage-text {
+        font-size: 10px;
+    }
+}

@@ -143,6 +143,273 @@ if ($user_id > 0) {
             <canvas id="wpualGlanceChart"></canvas>
         </div>
     </div>
+
+    <?php
+    // Get Top 10 Most Active Users (excluding admins) for the selected time period
+    $top_users_query = "
+        SELECT 
+            u.ID,
+            u.display_name,
+            u.user_email,
+            COUNT(al.id) as activity_count
+        FROM {$wpdb->users} u
+        INNER JOIN {$table_name} al ON u.ID = al.user_id
+        WHERE DATE(al.created_at) BETWEEN %s AND %s
+        AND al.user_id IS NOT NULL 
+        AND al.user_id > 0
+        AND al.activity_type = %s
+        AND u.ID NOT IN (
+            SELECT user_id 
+            FROM {$wpdb->usermeta} 
+            WHERE meta_key = '{$wpdb->prefix}capabilities' 
+            AND meta_value LIKE '%administrator%'
+        )
+        GROUP BY u.ID, u.display_name, u.user_email
+        ORDER BY activity_count DESC
+        LIMIT 10
+    ";
+    
+    $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $activity_type));
+    ?>
+
+    <table width="100%">
+        <tr>
+            <td width="50%">
+                <div class="wpual-top-users">
+                    <h2><?php _e('Top 10 Most Active Users (Non-Admins)', 'wp-user-activity-logger'); ?></h2>
+                    <p class="description"><?php printf(__('Showing top users for %s activity from %s to %s', 'wp-user-activity-logger'), 
+                        ucfirst(str_replace('_', ' ', $activity_type)), 
+                        date_i18n('M j, Y', strtotime($date_from)), 
+                        date_i18n('M j, Y', strtotime($date_to))
+                    ); ?></p>
+                    
+                    <?php if (!empty($top_users)): ?>
+                        <table class="wp-list-table widefat fixed striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="manage-column column-rank"><?php _e('Rank', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-user"><?php _e('User', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-activity-count"><?php _e('Activity Count', 'wp-user-activity-logger'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $total_activities = array_sum(wp_list_pluck($top_users, 'activity_count'));
+                                $rank = 1;
+                                foreach ($top_users as $user): 
+                                    $percentage = $total_activities > 0 ? round(($user->activity_count / $total_activities) * 100, 1) : 0;
+                                ?>
+                                    <tr>
+                                        <td class="column-rank">
+                                            <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                        </td>
+                                        <td class="column-user">
+                                            <strong><?php echo esc_html($user->display_name); ?></strong>
+                                        </td>
+                                        <td class="column-activity-count">
+                                            <span class="activity-count"><?php echo number_format($user->activity_count); ?></span>
+                                        </td>
+                                    </tr>
+                                <?php 
+                                    $rank++;
+                                endforeach; 
+                                ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="notice notice-info">
+                            <p><?php _e('No user activity found for the selected time period and activity type.', 'wp-user-activity-logger'); ?></p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </td>
+            <td width="50%">
+                <?php
+                // Get Top 10 Most Viewed Categories (excluding admins) for the selected time period
+                $top_categories_query = "
+                    SELECT 
+                        al.activity_details,
+                        COUNT(*) as view_count
+                    FROM {$table_name} al
+                    INNER JOIN {$wpdb->users} u ON al.user_id = u.ID
+                    WHERE DATE(al.created_at) BETWEEN %s AND %s
+                    AND al.user_id IS NOT NULL 
+                    AND al.user_id > 0
+                    AND al.activity_type = 'category_view'
+                    AND u.ID NOT IN (
+                        SELECT user_id 
+                        FROM {$wpdb->usermeta} 
+                        WHERE meta_key = '{$wpdb->prefix}capabilities' 
+                        AND meta_value LIKE '%administrator%'
+                    )
+                    GROUP BY al.activity_details
+                    ORDER BY view_count DESC
+                    LIMIT 10
+                ";
+                
+                $top_categories = $wpdb->get_results($wpdb->prepare($top_categories_query, $date_from, $date_to));
+                ?>
+                
+                <div class="wpual-top-users">
+                    <h2><?php _e('Top 10 Most Viewed Categories (Non-Admins)', 'wp-user-activity-logger'); ?></h2>
+                    <p class="description"><?php printf(__('Showing top categories from %s to %s', 'wp-user-activity-logger'), 
+                        date_i18n('M j, Y', strtotime($date_from)), 
+                        date_i18n('M j, Y', strtotime($date_to))
+                    ); ?></p>
+                    
+                    <?php if (!empty($top_categories)): ?>
+                        <table class="wp-list-table widefat fixed striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="manage-column column-rank"><?php _e('Rank', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-category"><?php _e('Category', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-view-count"><?php _e('View Count', 'wp-user-activity-logger'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $total_views = array_sum(wp_list_pluck($top_categories, 'view_count'));
+                                $rank = 1;
+                                foreach ($top_categories as $category): 
+                                    $percentage = $total_views > 0 ? round(($category->view_count / $total_views) * 100, 1) : 0;
+                                    // Extract category name from activity_details (remove "Category: " or "Video Category: " prefix)
+                                    $category_name = $category->activity_details;
+                                    if (strpos($category_name, 'Video Category: ') === 0) {
+                                        $category_name = substr($category_name, 16); // Remove "Video Category: "
+                                    } elseif (strpos($category_name, 'Category: ') === 0) {
+                                        $category_name = substr($category_name, 10); // Remove "Category: "
+                                    }
+                                ?>
+                                    <tr>
+                                        <td class="column-rank">
+                                            <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                        </td>
+                                        <td class="column-category">
+                                            <strong><?php echo esc_html($category_name); ?></strong>
+                                        </td>
+                                        <td class="column-activity-count">
+                                            <span class="activity-count"><?php echo number_format($category->view_count); ?></span>
+                                        </td>
+                                    </tr>
+                                <?php 
+                                    $rank++;
+                                endforeach; 
+                                ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="notice notice-info">
+                            <p><?php _e('No category views found for the selected time period.', 'wp-user-activity-logger'); ?></p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td width="50%">
+                <?php
+                // Get Top 10 Most Viewed Videos (excluding admins) for the selected time period
+                $top_videos_query = "
+                    SELECT 
+                        al.activity_details,
+                        COUNT(*) as view_count,
+                        AVG(al.duration) as avg_duration
+                    FROM {$table_name} al
+                    INNER JOIN {$wpdb->users} u ON al.user_id = u.ID
+                    WHERE DATE(al.created_at) BETWEEN %s AND %s
+                    AND al.user_id IS NOT NULL 
+                    AND al.user_id > 0
+                    AND al.activity_type = 'video_view'
+                    AND u.ID NOT IN (
+                        SELECT user_id 
+                        FROM {$wpdb->usermeta} 
+                        WHERE meta_key = '{$wpdb->prefix}capabilities' 
+                        AND meta_value LIKE '%administrator%'
+                    )
+                    GROUP BY al.activity_details
+                    ORDER BY view_count DESC
+                    LIMIT 10
+                ";
+                
+                $top_videos = $wpdb->get_results($wpdb->prepare($top_videos_query, $date_from, $date_to));
+                ?>
+                
+                <div class="wpual-top-users">
+                    <h2><?php _e('Top 10 Most Viewed Videos (Non-Admins)', 'wp-user-activity-logger'); ?></h2>
+                    <p class="description"><?php printf(__('Showing top videos from %s to %s', 'wp-user-activity-logger'), 
+                        date_i18n('M j, Y', strtotime($date_from)), 
+                        date_i18n('M j, Y', strtotime($date_to))
+                    ); ?></p>
+                    
+                    <?php if (!empty($top_videos)): ?>
+                        <table class="wp-list-table widefat fixed striped">
+                            <thead>
+                                <tr>
+                                    <th scope="col" class="manage-column column-rank"><?php _e('Rank', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-video"><?php _e('Video Name', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-view-count"><?php _e('View Count', 'wp-user-activity-logger'); ?></th>
+                                    <th scope="col" class="manage-column column-avg-duration"><?php _e('Avg Watch Duration', 'wp-user-activity-logger'); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php 
+                                $rank = 1;
+                                foreach ($top_videos as $video): 
+                                    // Extract video name from activity_details (remove "Video View: " prefix)
+                                    $video_name = $video->activity_details;
+                                    if (strpos($video_name, 'Video View: ') === 0) {
+                                        $video_name = substr($video_name, 12); // Remove "Video View: "
+                                    }
+                                    
+                                    // Format average duration
+                                    $avg_duration = intval($video->avg_duration);
+                                    $duration_display = '';
+                                    if ($avg_duration > 0) {
+                                        if ($avg_duration < 60) {
+                                            $duration_display = $avg_duration . 's';
+                                        } elseif ($avg_duration < 3600) {
+                                            $minutes = floor($avg_duration / 60);
+                                            $seconds = $avg_duration % 60;
+                                            $duration_display = $minutes . 'm ' . $seconds . 's';
+                                        } else {
+                                            $hours = floor($avg_duration / 3600);
+                                            $minutes = floor(($avg_duration % 3600) / 60);
+                                            $duration_display = $hours . 'h ' . $minutes . 'm';
+                                        }
+                                    } else {
+                                        $duration_display = '<em>' . __('N/A', 'wp-user-activity-logger') . '</em>';
+                                    }
+                                ?>
+                                    <tr>
+                                        <td class="column-rank">
+                                            <span class="rank-badge rank-<?php echo $rank; ?>"><?php echo $rank; ?></span>
+                                        </td>
+                                        <td class="column-video">
+                                            <strong><?php echo esc_html($video_name); ?></strong>
+                                        </td>
+                                        <td class="column-view-count">
+                                            <span class="activity-count"><?php echo number_format($video->view_count); ?></span>
+                                        </td>
+                                        <td class="column-avg-duration">
+                                            <?php echo $duration_display; ?>
+                                        </td>
+                                    </tr>
+                                <?php 
+                                    $rank++;
+                                endforeach; 
+                                ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="notice notice-info">
+                            <p><?php _e('No video views found for the selected time period.', 'wp-user-activity-logger'); ?></p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </td>
+            <td width="50%"></td>
+        </tr>
+    </table>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
