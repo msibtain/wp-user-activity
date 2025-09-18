@@ -754,6 +754,15 @@
     text-align: center;
 }
 
+.activity_log a {
+	display: inline-block;
+	padding: 2px 8px;
+	background: seagreen;
+	color: #fff;
+	border-radius: 5px;
+	font-size: 12px;
+}
+
 /* Responsive adjustments for top users table */
 @media (max-width: 782px) {
     .wpual-top-users {

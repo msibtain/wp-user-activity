@@ -53,6 +53,9 @@ class WP_User_Activity_Logger {
         add_action('wp_ajax_wpual_search_users', array($this, 'search_users'));
         add_action('wp_ajax_nopriv_wpual_search_users', array($this, 'search_users'));
         add_action('wp_ajax_wpual_test_ajax', array($this, 'test_ajax'));
+        
+        // User row actions hook
+        add_filter('user_row_actions', array($this, 'add_activity_log_user_row_action'), 10, 2);
     }
     
     /**
@@ -541,6 +544,10 @@ class WP_User_Activity_Logger {
             $hook !== 'activity-log_page_wp-user-activity-active-users' &&
             $hook !== 'activity-log_page_wp-user-activity-active-glance'
         ) {
+            // Also load CSS on users.php page for the Activity Log link styling
+            if ($hook === 'users.php') {
+                wp_enqueue_style('wpual-admin', WPUAL_PLUGIN_URL . 'admin/css/admin.css', array(), time());
+            }
             return;
         }
         
@@ -1087,6 +1094,24 @@ class WP_User_Activity_Logger {
      */
     public function test_ajax() {
         wp_send_json_success('AJAX test successful!');
+    }
+    
+    /**
+     * Add Activity Log link to user row actions
+     */
+    public function add_activity_log_user_row_action($actions, $user) {
+        // Only show for users with manage_options capability
+        if (!current_user_can('manage_options')) {
+            return $actions;
+        }
+        
+        // Construct the URL with the necessary query parameters
+        $url = admin_url("admin.php?page=wp-user-activity-log&activity_type=&user_id={$user->ID}&user_role=&date_from=&date_to=&search=");
+        
+        // Add the custom action link
+        $actions['activity_log'] = "<a href='" . esc_url($url) . "'>" . esc_html__('Activity Log', 'wp-user-activity-logger') . "</a>";
+        
+        return $actions;
     }
 }
 
