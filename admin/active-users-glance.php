@@ -8,7 +8,7 @@ if (!defined('ABSPATH')) {
 $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
 $user_id = isset($_GET['user_id']) ? intval($_GET['user_id']) : 0;
-$activity_type = isset($_GET['activity_type']) ? sanitize_text_field($_GET['activity_type']) : 'page_view';
+$activity_type = isset($_GET['activity_type']) ? sanitize_text_field($_GET['activity_type']) : 'all';
 
 // Default to last 30 days if not provided
 if (empty($date_from) || empty($date_to)) {
@@ -28,7 +28,7 @@ if ($user_id > 0) {
     $where_values[] = $user_id;
 }
 
-if (in_array($activity_type, array('page_view', 'category_view', 'video_view'), true)) {
+if ($activity_type !== 'all' && in_array($activity_type, array('page_view', 'category_view', 'video_view'), true)) {
     $where_conditions[] = 'activity_type = %s';
     $where_values[] = $activity_type;
 }
@@ -100,6 +100,7 @@ if ($user_id > 0) {
                 <div class="filter-group">
                     <label for="activity_type"><?php _e('Activity Type', 'wp-user-activity-logger'); ?></label>
                     <select id="activity_type" name="activity_type">
+                        <option value="all" <?php selected($activity_type, 'all'); ?>><?php _e('All Activity Types', 'wp-user-activity-logger'); ?></option>
                         <option value="page_view" <?php selected($activity_type, 'page_view'); ?>><?php _e('Page View Activity', 'wp-user-activity-logger'); ?></option>
                         <option value="category_view" <?php selected($activity_type, 'category_view'); ?>><?php _e('Category View Activity', 'wp-user-activity-logger'); ?></option>
                         <option value="video_view" <?php selected($activity_type, 'video_view'); ?>><?php _e('Video View Activity', 'wp-user-activity-logger'); ?></option>
@@ -116,21 +117,28 @@ if ($user_id > 0) {
     <div class="wpual-chart">
         <?php
         $jsLabel = '';
-        if ($activity_type == '' || $activity_type == 'page_view') 
+        if ($activity_type == 'all') 
+        {
+            $jsLabel = 'All Activities Trend';
+            ?>
+            <h2><?php _e('All Activities Trend', 'wp-user-activity-logger'); ?></h2>
+            <?php
+        }
+        elseif ($activity_type == '' || $activity_type == 'page_view') 
         {
             $jsLabel = 'Page View Activity Trend';
             ?>
             <h2><?php _e('Page View Activity Trend', 'wp-user-activity-logger'); ?></h2>
             <?php
         }
-        if ($activity_type == 'category_view') 
+        elseif ($activity_type == 'category_view') 
         {
             $jsLabel = 'Category View Activity Trend';
             ?>
             <h2><?php _e('Category View Activity Trend', 'wp-user-activity-logger'); ?></h2>
             <?php
         }
-        if ($activity_type == 'video_view') 
+        elseif ($activity_type == 'video_view') 
         {
             $jsLabel = 'Video View Activity Trend';
             ?>
@@ -146,30 +154,54 @@ if ($user_id > 0) {
 
     <?php
     // Get Top 10 Most Active Users (excluding admins) for the selected time period
-    $top_users_query = "
-        SELECT 
-            u.ID,
-            u.display_name,
-            u.user_email,
-            COUNT(al.id) as activity_count
-        FROM {$wpdb->users} u
-        INNER JOIN {$table_name} al ON u.ID = al.user_id
-        WHERE DATE(al.created_at) BETWEEN %s AND %s
-        AND al.user_id IS NOT NULL 
-        AND al.user_id > 0
-        AND al.activity_type = %s
-        AND u.ID NOT IN (
-            SELECT user_id 
-            FROM {$wpdb->usermeta} 
-            WHERE meta_key = '{$wpdb->prefix}capabilities' 
-            AND meta_value LIKE '%administrator%'
-        )
-        GROUP BY u.ID, u.display_name, u.user_email
-        ORDER BY activity_count DESC
-        LIMIT 10
-    ";
-    
-    $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $activity_type));
+    if ($activity_type === 'all') {
+        $top_users_query = "
+            SELECT 
+                u.ID,
+                u.display_name,
+                u.user_email,
+                COUNT(al.id) as activity_count
+            FROM {$wpdb->users} u
+            INNER JOIN {$table_name} al ON u.ID = al.user_id
+            WHERE DATE(al.created_at) BETWEEN %s AND %s
+            AND al.user_id IS NOT NULL 
+            AND al.user_id > 0
+            AND u.ID NOT IN (
+                SELECT user_id 
+                FROM {$wpdb->usermeta} 
+                WHERE meta_key = '{$wpdb->prefix}capabilities' 
+                AND meta_value LIKE '%administrator%'
+            )
+            GROUP BY u.ID, u.display_name, u.user_email
+            ORDER BY activity_count DESC
+            LIMIT 10
+        ";
+        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to));
+    } else {
+        $top_users_query = "
+            SELECT 
+                u.ID,
+                u.display_name,
+                u.user_email,
+                COUNT(al.id) as activity_count
+            FROM {$wpdb->users} u
+            INNER JOIN {$table_name} al ON u.ID = al.user_id
+            WHERE DATE(al.created_at) BETWEEN %s AND %s
+            AND al.user_id IS NOT NULL 
+            AND al.user_id > 0
+            AND al.activity_type = %s
+            AND u.ID NOT IN (
+                SELECT user_id 
+                FROM {$wpdb->usermeta} 
+                WHERE meta_key = '{$wpdb->prefix}capabilities' 
+                AND meta_value LIKE '%administrator%'
+            )
+            GROUP BY u.ID, u.display_name, u.user_email
+            ORDER BY activity_count DESC
+            LIMIT 10
+        ";
+        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $activity_type));
+    }
     ?>
 
     <table width="100%">
@@ -177,11 +209,14 @@ if ($user_id > 0) {
             <td width="50%">
                 <div class="wpual-top-users">
                     <h2><?php _e('Top 10 Most Active Users (Non-Admins)', 'wp-user-activity-logger'); ?></h2>
-                    <p class="description"><?php printf(__('Showing top users for %s activity from %s to %s', 'wp-user-activity-logger'), 
-                        ucfirst(str_replace('_', ' ', $activity_type)), 
-                        date_i18n('M j, Y', strtotime($date_from)), 
-                        date_i18n('M j, Y', strtotime($date_to))
-                    ); ?></p>
+                    <p class="description"><?php 
+                        $activity_type_display = ($activity_type === 'all') ? 'all activity types' : ucfirst(str_replace('_', ' ', $activity_type));
+                        printf(__('Showing top users for %s activity from %s to %s', 'wp-user-activity-logger'), 
+                            $activity_type_display, 
+                            date_i18n('M j, Y', strtotime($date_from)), 
+                            date_i18n('M j, Y', strtotime($date_to))
+                        ); 
+                    ?></p>
                     
                     <?php if (!empty($top_users)): ?>
                         <table class="wp-list-table widefat fixed striped">
@@ -421,7 +456,9 @@ if ($user_id > 0) {
         var labels = <?php echo wp_json_encode($labels); ?>;
         var values = <?php echo wp_json_encode($values); ?>;
         var color = 'rgba(0, 115, 170, 0.8)';
-        if ('<?php echo esc_js($activity_type); ?>' === 'category_view') {
+        if ('<?php echo esc_js($activity_type); ?>' === 'all') {
+            color = 'rgba(40, 167, 69, 0.8)';
+        } else if ('<?php echo esc_js($activity_type); ?>' === 'category_view') {
             color = 'rgba(255, 159, 64, 0.9)';
         } else if ('<?php echo esc_js($activity_type); ?>' === 'video_view') {
             color = 'rgba(220, 53, 69, 0.9)';
