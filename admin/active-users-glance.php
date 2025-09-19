@@ -4,6 +4,40 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Get parent video category from a video post URL.
+ *
+ * @param string $url Post URL
+ * @return WP_Term|false Parent term object if found, false otherwise.
+ */
+function get_parent_video_category_from_url( $url ) {
+    // Get the post ID from the URL
+    $post_id = url_to_postid( $url );
+    if ( ! $post_id ) {
+        return false;
+    }
+
+    // Get terms from custom taxonomy
+    $terms = wp_get_post_terms( $post_id, 'video-category' );
+
+    if ( empty( $terms ) || is_wp_error( $terms ) ) {
+        return false;
+    }
+
+    // Loop through terms and return the top-level parent
+    foreach ( $terms as $term ) {
+        // Walk up until we find the parent-most term
+        $parent = $term;
+        while ( $parent->parent != 0 ) {
+            $parent = get_term( $parent->parent, 'video-category' );
+        }
+        return $parent;
+    }
+
+    return false;
+}
+
+
 // Inputs
 $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
 $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
@@ -341,12 +375,13 @@ if ($user_id > 0) {
             </td>
         </tr>
         <tr>
-            <td width="50%">
+            <td colspan="2">
                 <?php
                 // Get Top 10 Most Viewed Videos (excluding admins) for the selected time period
                 $top_videos_query = "
                     SELECT 
                         al.activity_details,
+                        al.page_url,
                         COUNT(*) as view_count,
                         AVG(al.duration) as avg_duration
                     FROM {$table_name} al
@@ -421,6 +456,17 @@ if ($user_id > 0) {
                                         </td>
                                         <td class="column-video">
                                             <strong><?php echo esc_html($video_name); ?></strong>
+                                            <br>
+                                            <?php 
+                                            
+                                            $video_category = get_parent_video_category_from_url($video->page_url); 
+                                            if ($video_category) {
+                                                echo esc_html($video_category->name);
+                                            } else {
+                                                echo '<em>' . __('No category', 'wp-user-activity-logger') . '</em>';
+                                            }
+                                            
+                                            ?>
                                         </td>
                                         <td class="column-view-count">
                                             <span class="activity-count"><?php echo number_format($video->view_count); ?></span>
@@ -442,7 +488,6 @@ if ($user_id > 0) {
                     <?php endif; ?>
                 </div>
             </td>
-            <td width="50%"></td>
         </tr>
     </table>
 </div>
