@@ -37,6 +37,48 @@ function get_parent_video_category_from_url( $url ) {
     return false;
 }
 
+/**
+ * Get the parent category name from ?icat= parameter in URL.
+ *
+ * @param string $url The full URL (e.g. https://myscopeiq.com/home/?icat=26)
+ * @return string|false Parent category name, or false if not found.
+ */
+function get_parent_video_category_from_icat( $url ) {
+    // Parse query string
+    $parts = wp_parse_url( $url );
+    if ( empty( $parts['query'] ) ) {
+        return false;
+    }
+
+    parse_str( $parts['query'], $query_vars );
+
+    
+    if ( empty( $query_vars['icat'] ) ) {
+        return false;
+    }
+
+    $icatArray = explode('?', $query_vars['icat']);
+
+
+    $term_id = intval( $icatArray[0] );
+
+    // Get the term object
+    $term = get_term( $term_id, 'video-category' );
+    if ( ! $term || is_wp_error( $term ) ) {
+        return false;
+    }
+
+    // Climb up to the top-level parent
+    while ( $term->parent != 0 ) {
+        $term = get_term( $term->parent, 'video-category' );
+        if ( ! $term || is_wp_error( $term ) ) {
+            return false;
+        }
+    }
+
+    return $term->name; // return parent category name
+}
+
 
 // Inputs
 $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
@@ -240,7 +282,7 @@ if ($user_id > 0) {
 
     <table width="100%">
         <tr>
-            <td width="50%">
+            <td width="50%" valign="top">
                 <div class="wpual-top-users">
                     <h2><?php _e('Top 10 Most Active Users (Non-Admins)', 'wp-user-activity-logger'); ?></h2>
                     <p class="description"><?php 
@@ -292,12 +334,13 @@ if ($user_id > 0) {
                     <?php endif; ?>
                 </div>
             </td>
-            <td width="50%">
+            <td width="50%" valign="top">
                 <?php
                 // Get Top 10 Most Viewed Categories (excluding admins) for the selected time period
                 $top_categories_query = "
                     SELECT 
                         al.activity_details,
+                        al.page_url,
                         COUNT(*) as view_count
                     FROM {$table_name} al
                     INNER JOIN {$wpdb->users} u ON al.user_id = u.ID
@@ -355,6 +398,17 @@ if ($user_id > 0) {
                                         </td>
                                         <td class="column-category">
                                             <strong><?php echo esc_html($category_name); ?></strong>
+                                            <br>
+                                            <?php 
+                                            $parent_cat_name = get_parent_video_category_from_icat( $category->page_url );
+                                            if ($parent_cat_name) {
+                                                echo esc_html($parent_cat_name);
+                                            }
+                                            else
+                                            {
+                                                echo "No parent found";
+                                            }
+                                            ?>
                                         </td>
                                         <td class="column-activity-count">
                                             <span class="activity-count"><?php echo number_format($category->view_count); ?></span>
