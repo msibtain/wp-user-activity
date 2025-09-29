@@ -223,6 +223,19 @@ $total_pages = ceil($total_logs / $per_page);
         ));
         ?>
         <a href="<?php echo esc_url($export_url); ?>" class="button" target="_blank"><?php _e('Export CSV', 'wp-user-activity-logger'); ?></a>
+        <?php if (!empty($user_filter)): ?>
+            <?php 
+            $pdf_export_url = admin_url('admin-ajax.php') . '?' . http_build_query(array(
+                'action' => 'wpual_export_user_pdf',
+                'nonce' => wp_create_nonce('wpual_nonce'),
+                'user_id' => $user_filter,
+                'date_from' => $date_from,
+                'date_to' => $date_to,
+                'activity_type' => $activity_type_filter
+            ));
+            ?>
+            <a href="<?php echo esc_url($pdf_export_url); ?>" class="button button-primary" target="_blank"><?php _e('Export User PDF', 'wp-user-activity-logger'); ?></a>
+        <?php endif; ?>
         <button type="button" class="button button-secondary" id="clear-logs"><?php _e('Clear All Logs', 'wp-user-activity-logger'); ?></button>
     </div>
     

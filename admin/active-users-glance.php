@@ -109,6 +109,10 @@ if ($activity_type !== 'all' && in_array($activity_type, array('page_view', 'cat
     $where_values[] = $activity_type;
 }
 
+$exclude_domain = '%@freightoscope.com';
+$where_conditions[] = "user_id NOT IN (SELECT ID FROM {$wpdb->users} WHERE user_email LIKE %s)";
+$where_values[] = $exclude_domain;
+
 $where_clause = 'WHERE ' . implode(' AND ', $where_conditions) . ' AND user_id IS NOT NULL AND user_id > 0';
 
 // Daily aggregation for chart
@@ -247,12 +251,14 @@ if ($user_id > 0) {
                 FROM {$wpdb->usermeta} 
                 WHERE meta_key = '{$wpdb->prefix}capabilities' 
                 AND meta_value LIKE '%administrator%'
-            )
+            ) 
+            AND u.user_email NOT LIKE %s
             GROUP BY u.ID, u.display_name, u.user_email
             ORDER BY activity_count DESC
             LIMIT 10
         ";
-        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to));
+        // $top_users_query = str_replace('ORDER BY activity_count DESC', "AND u.user_email NOT LIKE %s\n            ORDER BY activity_count DESC", $top_users_query);
+        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $exclude_domain));
     } else {
         $top_users_query = "
             SELECT 
@@ -271,12 +277,14 @@ if ($user_id > 0) {
                 FROM {$wpdb->usermeta} 
                 WHERE meta_key = '{$wpdb->prefix}capabilities' 
                 AND meta_value LIKE '%administrator%'
-            )
+            ) 
+            AND u.user_email NOT LIKE %s
             GROUP BY u.ID, u.display_name, u.user_email
             ORDER BY activity_count DESC
             LIMIT 10
         ";
-        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $activity_type));
+        // $top_users_query = str_replace('ORDER BY activity_count DESC', "AND u.user_email NOT LIKE %s\n            ORDER BY activity_count DESC", $top_users_query);
+        $top_users = $wpdb->get_results($wpdb->prepare($top_users_query, $date_from, $date_to, $activity_type, $exclude_domain));
     }
     ?>
 
@@ -316,6 +324,25 @@ if ($user_id > 0) {
                                         </td>
                                         <td class="column-user">
                                             <strong><?php echo esc_html($user->display_name); ?></strong>
+                                            <?php 
+                                                $userdata = get_userdata( $user->ID );
+                                                $role_names = array();
+                                                if ( $userdata && is_array( $userdata->roles ) ) {
+                                                    $all_roles = wp_roles()->role_names;
+                                                    foreach ( $userdata->roles as $role_slug ) {
+                                                        if ( isset( $all_roles[ $role_slug ] ) ) {
+                                                            $role_names[] = $all_roles[ $role_slug ];
+                                                        } else {
+                                                            $role_names[] = ucfirst( $role_slug );
+                                                        }
+                                                    }
+                                                }
+                                                if ( ! empty( $role_names ) ) {
+                                                    echo esc_html( implode( ', ', $role_names ) );
+                                                } else {
+                                                    echo '<em>' . __( 'No role', 'wp-user-activity-logger' ) . '</em>';
+                                                }
+                                            ?>
                                         </td>
                                         <td class="column-activity-count">
                                             <span class="activity-count"><?php echo number_format($user->activity_count); ?></span>
@@ -353,13 +380,16 @@ if ($user_id > 0) {
                         FROM {$wpdb->usermeta} 
                         WHERE meta_key = '{$wpdb->prefix}capabilities' 
                         AND meta_value LIKE '%administrator%'
-                    )
+                    ) 
+                    AND u.user_email NOT LIKE %s
+                    AND al.activity_details NOT IN ('Video Category: Freight Management System (FMS)', 'Video Category: Rate Management System (RMS)')
                     GROUP BY al.activity_details
                     ORDER BY view_count DESC
                     LIMIT 10
                 ";
                 
-                $top_categories = $wpdb->get_results($wpdb->prepare($top_categories_query, $date_from, $date_to));
+                // $top_categories_query = str_replace('GROUP BY al.activity_details', "AND u.user_email NOT LIKE %s\n                    GROUP BY al.activity_details", $top_categories_query);
+                $top_categories = $wpdb->get_results($wpdb->prepare($top_categories_query, $date_from, $date_to, $exclude_domain));
                 ?>
                 
                 <div class="wpual-top-users">
@@ -449,13 +479,15 @@ if ($user_id > 0) {
                         FROM {$wpdb->usermeta} 
                         WHERE meta_key = '{$wpdb->prefix}capabilities' 
                         AND meta_value LIKE '%administrator%'
-                    )
+                    ) 
+                    AND u.user_email NOT LIKE %s
                     GROUP BY al.activity_details
                     ORDER BY view_count DESC
                     LIMIT 10
                 ";
                 
-                $top_videos = $wpdb->get_results($wpdb->prepare($top_videos_query, $date_from, $date_to));
+                // $top_videos_query = str_replace('GROUP BY al.activity_details', "AND u.user_email NOT LIKE %s\n                    GROUP BY al.activity_details", $top_videos_query);
+                $top_videos = $wpdb->get_results($wpdb->prepare($top_videos_query, $date_from, $date_to, $exclude_domain));
                 ?>
                 
                 <div class="wpual-top-users">

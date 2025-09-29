@@ -48,6 +48,7 @@ class WP_User_Activity_Logger {
         add_action('wp_ajax_wpual_clear_logs', array($this, 'clear_logs'));
         add_action('wp_ajax_wpual_export_logs', array($this, 'export_logs'));
         add_action('wp_ajax_wpual_export_active_users', array($this, 'export_active_users'));
+        add_action('wp_ajax_wpual_export_user_pdf', array($this, 'export_user_pdf'));
         add_action('wp_ajax_wpual_update_duration', array($this, 'update_duration'));
         add_action('wp_ajax_nopriv_wpual_update_duration', array($this, 'update_duration'));
         add_action('wp_ajax_wpual_search_users', array($this, 'search_users'));
@@ -1047,6 +1048,255 @@ class WP_User_Activity_Logger {
         error_log('WPUAL Export Active Users: Export completed successfully');
         
         exit;
+    }
+    
+    /**
+     * Export user activity to PDF
+     */
+    public function export_user_pdf() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to perform this action.', 'wp-user-activity-logger'));
+        }
+        
+        if (!wp_verify_nonce($_GET['nonce'], 'wpual_nonce')) {
+            wp_die(__('Security check failed.', 'wp-user-activity-logger'));
+        }
+        
+        $user_id = intval($_GET['user_id']);
+        $date_from = sanitize_text_field($_GET['date_from']);
+        $date_to = sanitize_text_field($_GET['date_to']);
+        $activity_type = sanitize_text_field($_GET['activity_type']);
+        
+        if (empty($user_id)) {
+            wp_die(__('User ID is required for PDF export.', 'wp-user-activity-logger'));
+        }
+        
+        $user = get_user_by('id', $user_id);
+        if (!$user) {
+            wp_die(__('User not found.', 'wp-user-activity-logger'));
+        }
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'activity_log';
+        
+        // Build WHERE conditions
+        $where_conditions = array('user_id = %d');
+        $where_values = array($user_id);
+        
+        if (!empty($date_from)) {
+            $where_conditions[] = 'DATE(created_at) >= %s';
+            $where_values[] = $date_from;
+        }
+        
+        if (!empty($date_to)) {
+            $where_conditions[] = 'DATE(created_at) <= %s';
+            $where_values[] = $date_to;
+        }
+        
+        if (!empty($activity_type)) {
+            $where_conditions[] = 'activity_type = %s';
+            $where_values[] = $activity_type;
+        }
+        
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        
+        // Get user activity logs
+        $query = "SELECT * FROM $table_name $where_clause ORDER BY created_at DESC";
+        $logs = $wpdb->get_results($wpdb->prepare($query, $where_values));
+        
+        // Get chart data for the user
+        $chart_query = "
+            SELECT DATE(created_at) as activity_date,
+                   COUNT(*) as total
+            FROM $table_name
+            $where_clause
+            GROUP BY DATE(created_at)
+            ORDER BY activity_date ASC
+        ";
+        $chart_data = $wpdb->get_results($wpdb->prepare($chart_query, $where_values));
+        
+        // Generate PDF
+        $this->generate_user_pdf($user, $logs, $chart_data, $date_from, $date_to, $activity_type);
+    }
+    
+    /**
+     * Generate PDF for user activity
+     */
+    private function generate_user_pdf($user, $logs, $chart_data, $date_from, $date_to, $activity_type) {
+        // Include DomPDF library
+        require_once(ABSPATH . 'wp-content/plugins/wp-user-activity-logger/vendor/vendor/autoload.php');
+        
+        // Create new PDF document
+        $dompdf = new \Dompdf\Dompdf();
+        $dompdf->setPaper('A4', 'portrait');
+        
+        // Generate HTML content
+        $html = $this->generate_pdf_html($user, $logs, $chart_data, $date_from, $date_to, $activity_type);
+        
+        // Load HTML content
+        $dompdf->loadHtml($html);
+        
+        // Render PDF
+        $dompdf->render();
+        
+        // Output PDF
+        $filename = 'user-activity-' . sanitize_file_name($user->user_login) . '-' . date('Y-m-d-H-i-s') . '.pdf';
+        $dompdf->stream($filename, array('Attachment' => 1));
+        exit;
+    }
+    
+    /**
+     * Generate HTML content for PDF
+     */
+    private function generate_pdf_html($user, $logs, $chart_data, $date_from, $date_to, $activity_type) {
+        // Date range
+        $date_range = 'All time';
+        if (!empty($date_from) && !empty($date_to)) {
+            $date_range = date('M j, Y', strtotime($date_from)) . ' - ' . date('M j, Y', strtotime($date_to));
+        } elseif (!empty($date_from)) {
+            $date_range = 'From ' . date('M j, Y', strtotime($date_from));
+        } elseif (!empty($date_to)) {
+            $date_range = 'Until ' . date('M j, Y', strtotime($date_to));
+        }
+        
+        // Activity summary
+        $total_activities = count($logs);
+        $total_duration = array_sum(wp_list_pluck($logs, 'duration'));
+        $activity_types = array_unique(wp_list_pluck($logs, 'activity_type'));
+        
+        // Generate chart data for visualization
+        $chart_html = '';
+        if (!empty($chart_data)) {
+            $max_activities = max(wp_list_pluck($chart_data, 'total'));
+            $chart_html = '<div class="chart-container">';
+            $chart_html .= '<h3>Activity Trend</h3>';
+            $chart_html .= '<div class="chart-bars">';
+            
+            foreach ($chart_data as $day_data) {
+                $date = date('M j', strtotime($day_data->activity_date));
+                $count = intval($day_data->total);
+                $bar_width = $max_activities > 0 ? round(($count / $max_activities) * 100) : 0;
+                
+                $chart_html .= '<div class="chart-row">';
+                $chart_html .= '<span class="chart-date">' . $date . '</span>';
+                $chart_html .= '<div class="chart-bar-container">';
+                $chart_html .= '<div class="chart-bar" style="width: ' . $bar_width . '%;"></div>';
+                $chart_html .= '<span class="chart-count">' . $count . '</span>';
+                $chart_html .= '</div>';
+                $chart_html .= '</div>';
+            }
+            
+            $chart_html .= '</div></div>';
+        }
+        
+        // Generate activity logs table
+        $logs_html = '';
+        if (!empty($logs)) {
+            $logs_html = '<div class="logs-table">';
+            $logs_html .= '<h3>Activity Logs</h3>';
+            $logs_html .= '<table>';
+            $logs_html .= '<thead><tr><th>Date</th><th>Activity</th><th>Details</th><th>Duration</th><th>URL</th></tr></thead>';
+            $logs_html .= '<tbody>';
+            
+            foreach ($logs as $log) {
+                $date = date('M j, Y H:i', strtotime($log->created_at));
+                $activity = ucfirst(str_replace('_', ' ', $log->activity_type));
+                $details = substr($log->activity_details, 0, 50) . (strlen($log->activity_details) > 50 ? '...' : '');
+                $duration = $this->format_duration($log->duration);
+                $url = substr($log->page_url, 0, 40) . (strlen($log->page_url) > 40 ? '...' : '');
+                
+                $logs_html .= '<tr>';
+                $logs_html .= '<td>' . $date . '</td>';
+                $logs_html .= '<td>' . $activity . '</td>';
+                $logs_html .= '<td>' . $details . '</td>';
+                $logs_html .= '<td>' . $duration . '</td>';
+                $logs_html .= '<td>' . $url . '</td>';
+                $logs_html .= '</tr>';
+            }
+            
+            $logs_html .= '</tbody></table></div>';
+        } else {
+            $logs_html = '<div class="no-logs">No activity logs found for the selected criteria.</div>';
+        }
+        
+        $html = '
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>User Activity Report - ' . $user->display_name . '</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .header h1 { color: #2c3e50; margin-bottom: 10px; }
+                .user-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                .user-info h3 { margin-top: 0; color: #495057; }
+                .summary { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                .summary h3 { margin-top: 0; color: #495057; }
+                .chart-container { margin-bottom: 20px; }
+                .chart-container h3 { color: #495057; }
+                .chart-bars { margin-top: 10px; }
+                .chart-row { display: flex; align-items: center; margin-bottom: 8px; }
+                .chart-date { width: 80px; font-size: 12px; }
+                .chart-bar-container { flex: 1; position: relative; height: 20px; background: #f1f3f4; border-radius: 10px; margin: 0 10px; }
+                .chart-bar { height: 100%; background: #007cba; border-radius: 10px; }
+                .chart-count { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); font-size: 11px; font-weight: bold; }
+                .logs-table { margin-top: 20px; }
+                .logs-table h3 { color: #495057; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #dee2e6; padding: 8px; text-align: left; font-size: 11px; }
+                th { background: #f8f9fa; font-weight: bold; }
+                .no-logs { text-align: center; padding: 20px; color: #6c757d; }
+                .info-row { margin-bottom: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>User Activity Report</h1>
+            </div>
+            
+            <div class="user-info">
+                <h3>User Information</h3>
+                <div class="info-row"><strong>Name:</strong> ' . $user->display_name . '</div>
+                <div class="info-row"><strong>Email:</strong> ' . $user->user_email . '</div>
+                <div class="info-row"><strong>Username:</strong> ' . $user->user_login . '</div>
+                <div class="info-row"><strong>Date Range:</strong> ' . $date_range . '</div>
+                ' . (!empty($activity_type) ? '<div class="info-row"><strong>Activity Type:</strong> ' . ucfirst(str_replace('_', ' ', $activity_type)) . '</div>' : '') . '
+            </div>
+            
+            <div class="summary">
+                <h3>Activity Summary</h3>
+                <div class="info-row"><strong>Total Activities:</strong> ' . $total_activities . '</div>
+                <div class="info-row"><strong>Total Duration:</strong> ' . $this->format_duration($total_duration) . '</div>
+                <div class="info-row"><strong>Activity Types:</strong> ' . implode(', ', array_map(function($type) {
+                    return ucfirst(str_replace('_', ' ', $type));
+                }, $activity_types)) . '</div>
+            </div>
+            
+            ' . $chart_html . '
+            ' . $logs_html . '
+        </body>
+        </html>';
+        
+        return $html;
+    }
+    
+    /**
+     * Format duration in a readable format
+     */
+    private function format_duration($seconds) {
+        $seconds = intval($seconds);
+        if ($seconds < 60) {
+            return $seconds . 's';
+        } elseif ($seconds < 3600) {
+            $minutes = floor($seconds / 60);
+            $remaining_seconds = $seconds % 60;
+            return $minutes . 'm ' . $remaining_seconds . 's';
+        } else {
+            $hours = floor($seconds / 3600);
+            $minutes = floor(($seconds % 3600) / 60);
+            return $hours . 'h ' . $minutes . 'm';
+        }
     }
     
     /**
