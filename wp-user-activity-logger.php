@@ -49,6 +49,8 @@ class WP_User_Activity_Logger {
         add_action('wp_ajax_wpual_export_logs', array($this, 'export_logs'));
         add_action('wp_ajax_wpual_export_active_users', array($this, 'export_active_users'));
         add_action('wp_ajax_wpual_export_user_pdf', array($this, 'export_user_pdf'));
+        add_action('wp_ajax_wpual_export_team_pdf', array($this, 'export_team_pdf'));
+        add_action('wp_ajax_nopriv_wpual_export_team_pdf', array($this, 'export_team_pdf'));
         add_action('wp_ajax_wpual_update_duration', array($this, 'update_duration'));
         add_action('wp_ajax_nopriv_wpual_update_duration', array($this, 'update_duration'));
         add_action('wp_ajax_wpual_search_users', array($this, 'search_users'));
@@ -57,6 +59,8 @@ class WP_User_Activity_Logger {
         
         // User row actions hook
         add_filter('user_row_actions', array($this, 'add_activity_log_user_row_action'), 10, 2);
+
+        add_shortcode('team-hub', array($this, 'team_hub_cb'));
     }
     
     /**
@@ -1362,6 +1366,298 @@ class WP_User_Activity_Logger {
         $actions['activity_log'] = "<a href='" . esc_url($url) . "'>" . esc_html__('Activity Log', 'wp-user-activity-logger') . "</a>";
         
         return $actions;
+    }
+
+    /**
+     * Export team activity to PDF
+     */
+    public function export_team_pdf() {
+        // Check if user is a manager
+        $user_is_a_manager = get_user_meta(get_current_user_id(), 'user_is_a_manager', true);
+        if (!$user_is_a_manager) {
+            wp_die(__('You do not have permission to perform this action.', 'wp-user-activity-logger'));
+        }
+        
+        if (!wp_verify_nonce($_GET['nonce'], 'wpual_nonce')) {
+            wp_die(__('Security check failed.', 'wp-user-activity-logger'));
+        }
+        
+        // Get current user's role
+        $current_user = wp_get_current_user();
+        $user_roles = $current_user->roles;
+        
+        if (empty($user_roles)) {
+            wp_die(__('No role assigned. Cannot export team activities.', 'wp-user-activity-logger'));
+        }
+        
+        $user_role = $user_roles[0];
+        
+        // Get all users with the same role
+        $team_users = get_users(array(
+            'role' => $user_role,
+            'fields' => 'ID'
+        ));
+        
+        if (empty($team_users)) {
+            wp_die(__('No team members found with the same role.', 'wp-user-activity-logger'));
+        }
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'activity_log';
+        
+        // Build query to get activities
+        $placeholders = implode(',', array_fill(0, count($team_users), '%d'));
+        $where_conditions = array("user_id IN ($placeholders)");
+        $where_values = $team_users;
+        
+        // Get optional date filters
+        $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
+        $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
+        
+        if (!empty($date_from)) {
+            $where_conditions[] = 'DATE(created_at) >= %s';
+            $where_values[] = $date_from;
+        }
+        
+        if (!empty($date_to)) {
+            $where_conditions[] = 'DATE(created_at) <= %s';
+            $where_values[] = $date_to;
+        }
+        
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        
+        // Get all activities (not limited to 50 for PDF)
+        $activities_query = "
+            SELECT al.*, u.display_name, u.user_email
+            FROM $table_name al
+            LEFT JOIN {$wpdb->users} u ON al.user_id = u.ID
+            $where_clause
+            ORDER BY al.created_at DESC
+        ";
+        
+        $activities = $wpdb->get_results($wpdb->prepare($activities_query, $where_values));
+        
+        // Get chart data - activities grouped by date
+        $chart_where_conditions = $where_conditions;
+        $chart_where_values = $where_values;
+        
+        // If no date filter, use last 30 days
+        if (empty($date_from) && empty($date_to)) {
+            $chart_date_from = date('Y-m-d', strtotime('-30 days'));
+            $chart_where_conditions[] = 'DATE(created_at) >= %s';
+            $chart_where_values[] = $chart_date_from;
+        }
+        
+        $chart_where_clause = 'WHERE ' . implode(' AND ', $chart_where_conditions);
+        
+        $chart_query = "
+            SELECT DATE(created_at) as activity_date,
+                   COUNT(*) as total_activities,
+                   COUNT(DISTINCT user_id) as active_users
+            FROM $table_name
+            $chart_where_clause
+            GROUP BY DATE(created_at)
+            ORDER BY activity_date ASC
+        ";
+        
+        $chart_data = $wpdb->get_results($wpdb->prepare($chart_query, $chart_where_values));
+        
+        // Get team statistics
+        $stats_query = "
+            SELECT 
+                COUNT(*) as total_activities,
+                COUNT(DISTINCT user_id) as total_users,
+                SUM(duration) as total_duration,
+                COUNT(DISTINCT DATE(created_at)) as active_days
+            FROM $table_name
+            $where_clause
+        ";
+        
+        $stats = $wpdb->get_row($wpdb->prepare($stats_query, $where_values));
+        
+        // Generate PDF
+        $this->generate_team_pdf($user_role, $team_users, $activities, $chart_data, $stats, $date_from, $date_to);
+    }
+    
+    /**
+     * Generate PDF for team activity
+     */
+    private function generate_team_pdf($user_role, $team_users, $activities, $chart_data, $stats, $date_from, $date_to) {
+        // Include DomPDF library
+        require_once(WPUAL_PLUGIN_PATH . 'vendor/vendor/autoload.php');
+        
+        // Create new PDF document
+        $dompdf = new \Dompdf\Dompdf();
+        $dompdf->setPaper('A4', 'portrait');
+        
+        // Generate HTML content
+        $html = $this->generate_team_pdf_html($user_role, $team_users, $activities, $chart_data, $stats, $date_from, $date_to);
+        
+        // Load HTML content
+        $dompdf->loadHtml($html);
+        
+        // Render PDF
+        $dompdf->render();
+        
+        // Output PDF
+        $filename = 'team-activity-' . sanitize_file_name($user_role) . '-' . date('Y-m-d-H-i-s') . '.pdf';
+        $dompdf->stream($filename, array('Attachment' => 1));
+        exit;
+    }
+    
+    /**
+     * Generate HTML content for team PDF
+     */
+    private function generate_team_pdf_html($user_role, $team_users, $activities, $chart_data, $stats, $date_from, $date_to) {
+        // Date range
+        $date_range = 'All time';
+        if (!empty($date_from) && !empty($date_to)) {
+            $date_range = date('M j, Y', strtotime($date_from)) . ' - ' . date('M j, Y', strtotime($date_to));
+        } elseif (!empty($date_from)) {
+            $date_range = 'From ' . date('M j, Y', strtotime($date_from));
+        } elseif (!empty($date_to)) {
+            $date_range = 'Until ' . date('M j, Y', strtotime($date_to));
+        }
+        
+        // Get team member names
+        $team_member_names = array();
+        foreach ($team_users as $user_id) {
+            $user = get_user_by('id', $user_id);
+            if ($user) {
+                $team_member_names[] = $user->display_name . ' (' . $user->user_email . ')';
+            }
+        }
+        
+        // Activity summary
+        $total_activities = count($activities);
+        $total_duration = $stats->total_duration;
+        $activity_types = array_unique(wp_list_pluck($activities, 'activity_type'));
+        
+        // Generate chart data for visualization
+        $chart_html = '';
+        if (!empty($chart_data)) {
+            $max_activities = max(wp_list_pluck($chart_data, 'total_activities'));
+            $chart_html = '<div class="chart-container">';
+            $chart_html .= '<h3>Activity Trend</h3>';
+            $chart_html .= '<div class="chart-bars">';
+            
+            foreach ($chart_data as $day_data) {
+                $date = date('M j', strtotime($day_data->activity_date));
+                $count = intval($day_data->total_activities);
+                $bar_width = $max_activities > 0 ? round(($count / $max_activities) * 100) : 0;
+                
+                $chart_html .= '<div class="chart-row">';
+                $chart_html .= '<span class="chart-date">' . $date . '</span>';
+                $chart_html .= '<div class="chart-bar-container">';
+                $chart_html .= '<div class="chart-bar" style="width: ' . $bar_width . '%;"></div>';
+                $chart_html .= '<span class="chart-count">' . $count . '</span>';
+                $chart_html .= '</div>';
+                $chart_html .= '</div>';
+            }
+            
+            $chart_html .= '</div></div>';
+        }
+        
+        // Generate activity logs table (limit to 100 for PDF)
+        $logs_html = '';
+        $display_activities = array_slice($activities, 0, 100);
+        if (!empty($display_activities)) {
+            $logs_html = '<div class="logs-table">';
+            $logs_html .= '<h3>Activity Logs' . ($total_activities > 100 ? ' (Showing first 100 of ' . $total_activities . ')' : '') . '</h3>';
+            $logs_html .= '<table>';
+            $logs_html .= '<thead><tr><th>Date</th><th>User</th><th>Activity</th><th>Details</th><th>Duration</th><th>URL</th></tr></thead>';
+            $logs_html .= '<tbody>';
+            
+            foreach ($display_activities as $activity) {
+                $date = date('M j, Y H:i', strtotime($activity->created_at));
+                $activity_type = ucfirst(str_replace('_', ' ', $activity->activity_type));
+                $details = substr($activity->activity_details, 0, 40) . (strlen($activity->activity_details) > 40 ? '...' : '');
+                $duration = $this->format_duration($activity->duration);
+                $url = substr($activity->page_url, 0, 30) . (strlen($activity->page_url) > 30 ? '...' : '');
+                $user_name = $activity->display_name ? $activity->display_name : 'Unknown';
+                
+                $logs_html .= '<tr>';
+                $logs_html .= '<td>' . $date . '</td>';
+                $logs_html .= '<td>' . $user_name . '</td>';
+                $logs_html .= '<td>' . $activity_type . '</td>';
+                $logs_html .= '<td>' . $details . '</td>';
+                $logs_html .= '<td>' . $duration . '</td>';
+                $logs_html .= '<td>' . $url . '</td>';
+                $logs_html .= '</tr>';
+            }
+            
+            $logs_html .= '</tbody></table></div>';
+        } else {
+            $logs_html = '<div class="no-logs">No activity logs found for the selected criteria.</div>';
+        }
+        
+        $html = '
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Team Activity Report - ' . ucfirst($user_role) . '</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; color: #333; font-size: 10px; }
+                .header { text-align: center; margin-bottom: 30px; }
+                .header h1 { color: #2c3e50; margin-bottom: 10px; }
+                .team-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                .team-info h3 { margin-top: 0; color: #495057; }
+                .summary { background: #e9ecef; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                .summary h3 { margin-top: 0; color: #495057; }
+                .chart-container { margin-bottom: 20px; }
+                .chart-container h3 { color: #495057; }
+                .chart-bars { margin-top: 10px; }
+                .chart-row { display: flex; align-items: center; margin-bottom: 6px; }
+                .chart-date { width: 70px; font-size: 10px; }
+                .chart-bar-container { flex: 1; position: relative; height: 18px; background: #f1f3f4; border-radius: 8px; margin: 0 10px; }
+                .chart-bar { height: 100%; background: #007cba; border-radius: 8px; }
+                .chart-count { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); font-size: 9px; font-weight: bold; }
+                .logs-table { margin-top: 20px; }
+                .logs-table h3 { color: #495057; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 9px; }
+                th, td { border: 1px solid #dee2e6; padding: 6px; text-align: left; }
+                th { background: #f8f9fa; font-weight: bold; }
+                .no-logs { text-align: center; padding: 20px; color: #6c757d; }
+                .info-row { margin-bottom: 4px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Team Activity Report</h1>
+            </div>
+            
+            <div class="team-info">
+                <h3>Team Information</h3>
+                <div class="info-row"><strong>Role:</strong> ' . ucfirst($user_role) . '</div>
+                <div class="info-row"><strong>Team Members:</strong> ' . count($team_users) . '</div>
+                <div class="info-row"><strong>Members:</strong> ' . implode(', ', $team_member_names) . '</div>
+                <div class="info-row"><strong>Date Range:</strong> ' . $date_range . '</div>
+            </div>
+            
+            <div class="summary">
+                <h3>Activity Summary</h3>
+                <div class="info-row"><strong>Total Activities:</strong> ' . $total_activities . '</div>
+                <div class="info-row"><strong>Total Duration:</strong> ' . $this->format_duration($total_duration) . '</div>
+                <div class="info-row"><strong>Team Members:</strong> ' . $stats->total_users . '</div>
+                <div class="info-row"><strong>Active Days:</strong> ' . $stats->active_days . '</div>
+                <div class="info-row"><strong>Activity Types:</strong> ' . implode(', ', array_map(function($type) {
+                    return ucfirst(str_replace('_', ' ', $type));
+                }, $activity_types)) . '</div>
+            </div>
+            
+            ' . $chart_html . '
+            ' . $logs_html . '
+        </body>
+        </html>';
+        
+        return $html;
+    }
+
+    public function team_hub_cb() {
+        ob_start();
+        include_once(plugin_dir_path(__FILE__) . 'templates/team-hub.php');
+        return ob_get_clean();
     }
 }
 
